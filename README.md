@@ -17,54 +17,73 @@ Direction-agnostic: personal→corporate, corporate→personal, personal→perso
 ## Repository layout
 
 ```
-account-migration/                     ← the skill source (canonical)
-  SKILL.md                             ← orchestration + discipline rules
-  assets/                              ← prompts and templates written to the user's hub
-    README-template.md
-    memory-capture-prompt.md
-    memory-seed-prompt.md
-    migration-prompt-template.md
-    validation-prompt.md
-  references/                          ← longer reference material the skill reads on demand
-    skill-user-facing-text.md          ← canonical locked copy of every user-facing prompt
-    architecture-notes.md              ← three project categories, three artifact kinds, tracker schema
-  scripts/                             ← Python scripts run via the skill's bash environment
-    extract_export.py
-    parse_allchats.py
-    reconstruct.py
-    reshape_and_extract.py
+SKILL.md                               ← orchestration + discipline rules
+assets/                                ← prompts and templates written to the user's hub
+  README-template.md
+  memory-capture-prompt.md
+  memory-seed-prompt.md
+  migration-prompt-template.md
+  validation-prompt.md
+references/                            ← longer reference material the skill reads on demand
+  skill-user-facing-text.md            ← canonical locked copy of every user-facing prompt
+  architecture-notes.md                ← three project categories, three artifact kinds, tracker schema
+scripts/                               ← Python scripts run via the skill's bash environment
+  extract_export.py
+  parse_allchats.py
+  reconstruct.py
+  reshape_and_extract.py
 
-account-migration.skill                ← pre-built binary (just a zip of the source folder)
 README.md                              ← this file
 LICENSE                                ← MIT License
 CHANGELOG.md                           ← version history
 ```
 
-The source folder is the canonical artifact. The `.skill` file is a build output for installation convenience — produced by zipping the source folder with `skill-creator`'s `package_skill.py` or any standard zip tool.
+The skill source files live at the repository root for browse-ability. Pre-built `.skill` binaries are distributed via [GitHub Releases](https://github.com/dbachen-dt/account-migration-skill/releases) rather than committed to the repository, so source history stays clean and each release has a clear version → binary mapping. A `.skill` file is just a zip containing a top-level `account-migration/` folder with the source files inside — produced by zipping a copy of those files with `skill-creator`'s `package_skill.py` or any standard zip tool (see "Build from source" below for the exact command).
 
 ## Installing
 
 ### Option 1 — Cowork (recommended for most users)
 
-1. Download `account-migration.skill` from this repository (or from a tagged Release).
+1. Download the latest `account-migration.skill` from the [Releases](https://github.com/dbachen-dt/account-migration-skill/releases/latest) page.
 2. In Cowork: **Customize → + → Skills → Upload**, select the `.skill` file.
 3. Open a new conversation. Tell Claude *"I need to migrate to a new Claude account"* (or any natural-language phrasing). The skill self-identifies and asks which side you're starting from.
 
 ### Option 2 — Build from source (for users who want to verify the binary)
 
+A `.skill` file is just a zip that contains a top-level folder named after the skill (`account-migration/`) with the source files inside. The source files in this repo are at the root, so building a `.skill` means wrapping them in that folder name and zipping.
+
 1. Clone or download this repository.
-2. Verify the source folder is intact (no missing files, expected structure above).
-3. Package it: `cd account-migration && zip -r ../account-migration-rebuilt.skill .`
-4. Compare against the shipped `.skill`:
-   - `unzip -l account-migration.skill` and `unzip -l account-migration-rebuilt.skill` — file lists should match.
-   - Optionally diff: `unzip -d shipped/ account-migration.skill && diff -r shipped/account-migration account-migration/` — should produce no differences except for filesystem metadata.
-5. Install the binary you built via the same Cowork UI upload step.
+2. Verify the source files are intact (`SKILL.md`, `assets/`, `references/`, `scripts/` — see the Repository layout above).
+3. Build the `.skill` (Linux/macOS shell shown; Windows users can use 7-Zip or PowerShell's `Compress-Archive` equivalently):
 
-This is how you can audit that the shipped `.skill` is exactly what the source represents.
+   ```sh
+   mkdir -p _build/account-migration
+   cp -r SKILL.md assets references scripts _build/account-migration/
+   (cd _build && zip -r ../account-migration-rebuilt.skill account-migration)
+   rm -rf _build
+   ```
 
-### Option 3 — Claude Code plugin marketplace
+4. Download the shipped `account-migration.skill` from the [Releases](https://github.com/dbachen-dt/account-migration-skill/releases/latest) page and compare:
 
-If you use Claude Code, you can add this repository as a plugin marketplace and install from there. (See Anthropic's [Claude Skills docs](https://github.com/anthropics/skills) for the marketplace mechanics.)
+   ```sh
+   unzip -l account-migration.skill         # file list of the shipped binary
+   unzip -l account-migration-rebuilt.skill # file list of the binary you built
+   ```
+
+   The file lists should match. For a deeper check, unzip both and `diff -r`:
+
+   ```sh
+   unzip -d _shipped account-migration.skill
+   unzip -d _rebuilt account-migration-rebuilt.skill
+   diff -r _shipped _rebuilt
+   rm -rf _shipped _rebuilt
+   ```
+
+   You should see no content differences (only filesystem metadata like timestamps).
+
+5. Install the binary you built via the same Cowork UI upload step from Option 1.
+
+This is how you can audit that the shipped `.skill` matches the source in this repository.
 
 ## How it works (architecture overview)
 
