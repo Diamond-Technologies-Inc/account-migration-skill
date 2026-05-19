@@ -4,6 +4,22 @@ All notable changes to this project are documented here.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.0] — 2026-05-19
+
+### Added
+- **Skill auto-packages itself into the hub's `skills/` subfolder at Step 3.5.** New `scripts/package_self.py` walks the skill's own source folder and produces a fresh `account-migration.skill` zip. The Track A custom-skills capture step runs this before prompting the user, so by the time the user sees the prompt the migration skill is already in `skills/`. The user only has to think about OTHER custom skills they may want to bring. Forecloses the most common failure mode in v1.2/v1.3 (user can't find the original installer to put in `skills/`).
+- New asset behavior: the hub's `skills/` subfolder is now created by the skill, not the user.
+- **A/B variants in `memory-capture-prompt.md`.** The file now offers two prompts the user picks from: **Prompt A — Wholesale migration** (everything carries) and **Prompt B — Corporate carve-out** (work bias + explicit personal-side exclusion list). One-sentence decision header tells the user which to use.
+
+### Changed
+- **Step 3.5 prompts reworded** to reflect the auto-packaging: opener mentions the migration skill is already in `skills/`; soft re-ask acknowledges the migration skill is present even when no other skills have been added; skip confirmation notes the migration skill is in place.
+- **SKILL.md Step 3.5 orchestration** updated to specify the `package_self.py` invocation pattern (run before opener fires).
+- **`scripts/` directory description** in SKILL.md lists the new `package_self.py` script.
+
+### Fixed
+- **Clarified that memory capture / seed / validation run in Claude Chat (claude.ai web OR the Chat surface in Claude Desktop), not in Cowork.** Account-level memory is read and written through the Claude Chat surface — Cowork is a separate desktop surface that doesn't have memory access. Previously the prompts implied these steps happen "in Cowork on this account," which was a category error — running the capture inside a Cowork session yields a response like *"I don't have persistent memory of you across sessions"* because Cowork sessions don't have access to the account memory store. Affected: `memory-capture-prompt.md`, `memory-seed-prompt.md`, locked-copy prompts **B-MS-1** (memory seed opener), **B-V-1** (validation opener), and **N+2** (Track A wrap's memory-capture reference); also the README template's manual fallback Steps 0, 1, and 6. All now explicitly direct the user to "Claude Chat (claude.ai or Claude Desktop's Chat surface, NOT Cowork)" and explain that the user will switch to the Chat surface for these steps and come back to Cowork to continue.
+- **Removed dangling reference to a "corporate-data variant of the migration guide"** from `memory-capture-prompt.md`. That guide was an external document — out of scope for the bundled skill — and the reference shouldn't have been there. The corporate-data prompt is now inline as Prompt B (see Added).
+
 ## [1.3.0] — 2026-05-18
 
 ### Added
