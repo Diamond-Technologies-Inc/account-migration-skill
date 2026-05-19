@@ -169,14 +169,16 @@ Then, on the **new** account, for each project you're bringing across:
 - [ ] Name it the same as it was on the old account.
 - [ ] Open `transition-data/project-blueprint.md`. Copy the **Custom
       Instructions** section into the new project's settings.
-- [ ] Start a conversation. Paste this prompt:
+- [ ] Start a conversation. Paste this prompt (it's also in the
+      project's `_PROJECT_BRIEF.md` under "Resuming on the new account"):
 
 ```
 This is a project I'm migrating from my old Claude account. Read
-`transition-data/project-blueprint.md` to pick up where I left off.
-The blueprint references knowledge files in `knowledge/` (for
-reconstructed projects) or in this project's folder (for Cowork
-projects) — read them as needed.
+`transition-data/project-blueprint.md` for full context, then treat
+its **Recommended Starting Prompt** section as my first directive
+— that's the project-tailored resumption point. Knowledge files
+referenced in the blueprint are in `knowledge/` (for reconstructed
+projects) or in this project's folder (for Cowork projects).
 ```
 
 - [ ] Repeat for each project.

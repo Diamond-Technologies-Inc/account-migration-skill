@@ -1274,12 +1274,16 @@ files ready. Finish setting it up on this account:
 1. Open the new Cowork project you just created.
 2. Open `transition-data/project-blueprint.md`. Copy the **Custom
    Instructions** section into the project's settings.
-3. Start a conversation in the project. Paste this prompt:
+3. Start a conversation in the project. Paste this prompt (it's
+   also saved in `_PROJECT_BRIEF.md`'s "Resuming on the new account"
+   section if you'd rather grab it from there):
    *"This is a project I'm migrating from my old Claude account.
-   Read `transition-data/project-blueprint.md` to pick up where I
-   left off. The blueprint references knowledge files in `knowledge/`
+   Read `transition-data/project-blueprint.md` for full context, then
+   treat its **Recommended Starting Prompt** section as my first
+   directive — that's the project-tailored resumption point.
+   Knowledge files referenced in the blueprint are in `knowledge/`
    (for reconstructed projects) or in this project's folder (for
-   Cowork projects) — read them as needed."*
+   Cowork projects)."*
 
 Say **"done"** when finished to move to the next project. Or
 **"skip ahead"** to move on without finishing the bootstrap (you can

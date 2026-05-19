@@ -37,9 +37,13 @@ sections:
    prior conversations, sessions, or accumulated context. Be
    exhaustive — better to include too much than to miss something I'd
    want carried across.
-7. **Recommended Starting Prompt** — Write a single prompt I can paste
-   into the new project's first conversation to restore useful context
-   immediately.
+7. **Recommended Starting Prompt** — Write a single prompt that
+   captures the most natural next step or open question for resuming
+   this work. On the new account, Claude will read this blueprint
+   after the project is set up and treat this section as its first
+   directive — so write it as if it's the first thing said in the
+   new project's conversation, surfacing what we'd want to pick up
+   on immediately.
 
 Be thorough. Do not summarize when full detail matters. Flag anything
 you cannot recall or access.
