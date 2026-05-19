@@ -1,12 +1,24 @@
 # Global memory capture prompt
 
-Run this in your OLD Claude account, in a new conversation with **no project selected**. Save the response as `memory-capture.md` in this migration hub folder. You'll upload it to the new account during Track B (the skill drives this in the memory-seed phase, or you can do it manually per the Track B README's Step 1).
+Claude's account-level memory of you is read and written through **Claude Chat** — that's the surface at claude.ai in a browser, or the Chat view in Claude Desktop. Cowork is a separate desktop surface for working with files and skills; it doesn't have access to account-level memory. So this prompt runs in Claude Chat (either claude.ai or Claude Desktop's Chat surface), NOT in a Cowork session.
 
-Do this BEFORE deleting your old account. Cowork's auto-memory doesn't migrate between accounts automatically — this prompt is the bridge.
+**On the OLD account, in Claude Chat (claude.ai or Claude Desktop's Chat surface, NOT Cowork), start a new conversation with no project selected** and paste one of the two prompts below. Save Claude's response as `memory-capture.md` in this migration hub folder. The migration skill picks it up during Track B's memory-seed phase (or you can apply it manually per the Track B README's Step 1).
+
+Do this BEFORE deleting your old account — once the account is gone, the memory it holds is gone.
+
+## Which prompt?
+
+Two variants depending on your migration scenario:
+
+- **Prompt A — Wholesale migration.** Use this if you want everything Claude knows about you carried across. Typical cases: personal→personal account move, consolidating two personal accounts, moving from a personal account to a new personal account (different email), or moving comingled personal+work to a new account where you want everything to come with you.
+
+- **Prompt B — Corporate carve-out.** Use this if you're moving work-related context from a comingled personal account to a separate corporate (Teams) account, and you want the new account to know your work context only — not your hobbies, family, or other personal entries. The prompt biases the dump toward work and produces an exclusion list for personal items so you can verify what was filtered.
+
+Pick one, paste it, save the response as `memory-capture.md`.
 
 ---
 
-## Prompt to paste
+## Prompt A — Wholesale migration
 
 ```
 I'm migrating to a new Claude account. Please create a markdown file
@@ -23,4 +35,28 @@ called memory-capture.md containing:
 Be exhaustive.
 ```
 
-If you're migrating corporate data off a personal account specifically (rather than moving everything wholesale), modify the prompt to ask Claude to additionally separate personal-only entries (hobbies, family, non-work interests) into a dedicated section so you can identify what NOT to carry across to a corporate account. See the corporate-data variant of the migration guide if that applies.
+---
+
+## Prompt B — Corporate carve-out
+
+```
+I'm migrating corporate-related context to a company-issued Claude
+account. Please create a markdown file called memory-capture.md
+containing:
+
+1. Your complete memory of me — verbatim, exactly as stored
+2. All memory edits I've made — numbered, exact text
+3. My work context: role, company, team, clients, projects
+4. My communication preferences as they relate to work
+5. Technical domains and tools I work with professionally
+6. Recurring workflows or patterns in how I use you for work
+7. Anything else that helps you work effectively with me on work topics
+
+Then, in a separate section titled "Personal entries (exclude from new
+account)", list any memory entries that are clearly personal (hobbies,
+family, non-work interests) and shouldn't be carried across to the
+corporate account.
+
+Be exhaustive on the work side. Be precise about the personal-side
+exclusions.
+```

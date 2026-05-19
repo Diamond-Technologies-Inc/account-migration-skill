@@ -44,6 +44,7 @@ Run these via `mcp__workspace__bash`. Stage them into a non-OneDrive scratch dir
 - `parse_allchats.py` — content-detects the user's saved Chats page (any `.html` in the hub) and produces `attribution_map.csv`. Run after `extract_export.py`.
 - `reconstruct.py` — given the manifests, attribution map, export-unzipped data, and per-project routing decisions, writes the per-project folder layouts (`_PROJECT_BRIEF.md`, `knowledge/`, `conversation-history/INDEX.md`, transcripts). Drives Part 1 reconstruction in place + catch-all routing.
 - `reshape_and_extract.py` — extracts inline artifacts (`tool_use:artifacts` + `tool_use:create_file`) into per-conversation subfolders and builds `_ARTIFACTS_TO_RECOVER.md` for non-inline binaries. Runs after reconstruction.
+- `package_self.py` — re-packages the skill's source folder into a fresh `.skill` (zip) file. Used by Step 3.5 (custom-skills capture) to drop `account-migration.skill` into the hub's `skills/` subfolder so the user doesn't have to find the original installer.
 
 ### `assets/` (templates and canonical prompts)
 
@@ -142,14 +143,20 @@ The full user-facing copy lives in `references/skill-user-facing-text.md` under 
 
 Orchestration:
 
-1. Display the **custom-skills opener** prompt. Wait for user response.
-2. **On "ready"**: check the hub's `skills/` subfolder for `.skill` or `.zip` files.
-   - **Found one or more files**: display the **custom-skills confirmation — files found** prompt with a sized listing. Append a `custom_skills` array to the tracker's handoff-state JSON listing the captured filenames (so Track B on the new account can reference them without re-scanning). Proceed to Step 4.
-   - **Empty folder or no folder**: display the **soft re-ask**. Wait for the user to either copy files in and say "ready" again, or say "skip".
-3. **On "skip"**: display the **skip confirmation** one-liner. Set the tracker's `custom_skills` array to empty. Proceed to Step 4.
-4. **On "quit"**: end the skill cleanly. Tracker stays on disk; user can resume later.
+1. **Auto-create `skills/` and package the skill into it.** Before displaying the opener, create the hub's `skills/` subfolder if it doesn't exist, then run `scripts/package_self.py` (via `mcp__workspace__bash`) to write a fresh `account-migration.skill` into it:
+   ```sh
+   python3 <SKILL_PATH>/scripts/package_self.py <SKILL_PATH> <HUB>/skills/account-migration.skill
+   ```
+   Pass the skill's original source path (not the scratch staging copy) so the packaged .skill is byte-faithful to what's installed. If the script fails (non-zero exit), log and continue — the user can still add the file manually via Step 1.5 of the README.
+2. Display the **custom-skills opener** prompt. The opener mentions that the migration skill has already been put in `skills/`. Wait for user response.
+3. **On "ready"**: check the hub's `skills/` subfolder for `.skill` or `.zip` files. At minimum, the auto-packaged `account-migration.skill` is there.
+   - **Found additional files beyond the auto-packaged skill** (or just the auto-packaged skill and the user is done): display the **custom-skills confirmation — files found** prompt with a sized listing. Append a `custom_skills` array to the tracker's handoff-state JSON listing all captured filenames. Proceed to Step 4.
+   - **Only the auto-packaged skill is there, user said "ready" anyway**: same as above. The auto-packaged skill is the minimum viable state.
+   - **Soft re-ask edge case**: if for some reason the auto-package failed AND the user added nothing, display the **soft re-ask** with the user-added context only.
+4. **On "skip"**: display the **skip confirmation** one-liner. Set the tracker's `custom_skills` array to contain just the auto-packaged migration skill entry. Proceed to Step 4.
+5. **On "quit"**: end the skill cleanly. Tracker stays on disk; user can resume later.
 
-The tracker's `<script type="application/json" id="handoff-state">` block carries `custom_skills` as `[{"filename": "...", "size_bytes": N}, ...]`. Empty list when skipped or no files found.
+The tracker's `<script type="application/json" id="handoff-state">` block carries `custom_skills` as `[{"filename": "...", "size_bytes": N}, ...]`. The auto-packaged migration skill is always in this list when Step 3.5 has run.
 
 ### Step 4 — End-of-Track-A wrap
 

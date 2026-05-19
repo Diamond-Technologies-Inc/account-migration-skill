@@ -723,32 +723,32 @@ users can't skip past it accidentally.
 ```
 One more thing before we wrap up Track A — your custom Cowork skills.
 
-If you've installed any custom skills or plugins on the old account
+I've already saved a fresh copy of this migration skill into the
+`skills/` subfolder next to your tracker — so you'll have it on the
+new account without having to find the original installer.
+
+If you've installed OTHER custom skills or plugins on the old account
 beyond what came bundled with Cowork (the `anthropic-skills` plugin),
 you'll need their installer files to re-install on the new account.
 Cowork's installed-skills location on disk is generally walled off, so
-the easiest path is to gather the original installer files from where
-you got them.
+the easiest path is to gather their original installer files from
+where you got them.
 
-To bring custom skills across — **including this migration skill
-itself**, which you'll need on the new account to run Track B:
+To bring additional custom skills across:
 
 1. In another Cowork session on the old account, ask Claude:
    *"list my installed skills"*. Note which are part of the default
    `anthropic-skills` plugin (no action needed) versus custom ones you
    imported yourself.
-2. For each custom skill or plugin: find the original installer
-   (typically a `.skill` file). Common locations: your `Downloads\`
-   folder, a source repo, or the marketplace / distribution you got it
-   from. **Don't forget `account-migration.skill`** — without it, the
-   new account can't run Track B.
-3. Create a `skills\` subfolder in this hub folder and drop each
-   installer file into it.
+2. For each custom skill: find its original installer (typically a
+   `.skill` file). Common locations: your `Downloads\` folder, a
+   source repo, or the marketplace / distribution you got it from.
+3. Drop each installer file into the `skills\` subfolder alongside the
+   migration skill I already put there.
 
-Say **"ready"** once you've copied them in, **"skip"** if you have no
-custom skills to bring (note: you'll still need to find
-`account-migration.skill` separately to run Track B), or **"quit"** to
-stop the migration.
+Say **"ready"** once you've added them (or **"skip"** if you have no
+other custom skills to bring — the migration skill is already in
+place), or **"quit"** to stop the migration.
 ```
 
 ## Custom-skills confirmation — files found
@@ -772,13 +772,11 @@ Fires when the user says "ready" but the `skills/` subfolder is empty
 or doesn't exist. Soft re-ask, not an error.
 
 ```
-I don't see anything in `skills/` yet — either you've got no custom
-skills to bring (in which case say **"skip"** and we'll move on) or
-the copy hasn't landed yet (in which case copy them in and say
-**"ready"** again).
-
-Remember to include `account-migration.skill` itself — that's the
-skill you'll install on the new account to run Track B.
+I see `account-migration.skill` in `skills/` (I put that there) but no
+other custom skills yet — either you have no other custom skills to
+bring (in which case say **"skip"** and we'll move on with just the
+migration skill) or your copy hasn't landed yet (in which case drop
+them in and say **"ready"** again).
 ```
 
 ## Custom-skills confirmation — skip
@@ -787,25 +785,30 @@ Fires after the user says "skip". One line; the next prompt fires
 immediately.
 
 ```
-No custom skills to migrate — moving on. (Remember you'll need
-`account-migration.skill` separately to run Track B on the new account.)
+No other custom skills to migrate — moving on. (The migration skill
+itself is already saved in `skills/account-migration.skill` for the
+new-account install.)
 ```
 
 ### Custom-skills decisions
 
+- **Skill auto-creates `skills/` and packages itself in.** Before
+  displaying the opener, the skill runs `scripts/package_self.py`
+  against its own source folder and writes a fresh `account-migration.skill`
+  into `<hub>/skills/`. This forecloses the most common failure mode
+  (user can't find the original installer for the migration skill
+  itself). User responsibility is reduced to OTHER custom skills they
+  may want to bring.
 - **Separate prompt-and-wait**, not silent inspection. Prompts the
   user explicitly rather than guessing based on folder state. A silent
-  check means most users would never know custom skills *could* be
-  migrated.
+  check means most users would never know other custom skills *could*
+  be migrated.
 - **"ready" / "skip" / "quit" vocabulary**, matching Part 1 / Part 2.
 - **Sized listing**, matching Prompt 2's inventory style. Catches the
   same zero-byte / truncated-file failure mode for the same reason.
-- **Soft empty-folder re-ask**, not hard error. Users may say "ready"
-  before they've finished copying; nudging is friendlier than blocking.
-- **`account-migration.skill` is foregrounded throughout.** Without
-  it on the new account, Track B is unreachable. Mentioning it in the
-  opener, the soft re-ask, and the skip confirmation maximizes the
-  chance the user includes it.
+- **Soft empty-folder re-ask** acknowledges the migration skill is
+  already there even when no other skills have been added. Avoids the
+  user thinking nothing has happened.
 - **No content validation** of the `.skill` files themselves. They're
   zip archives, but the skill doesn't need to verify them at this
   stage — Cowork's install flow will validate at install time on the
@@ -882,11 +885,14 @@ After that the skill drives the rest — memory seeding, project
 relinks, binary recovery, validation, and cleanup.
 
 One more thing to do **before** you start Track B (or before deleting
-this account, whichever comes first): capture your global memory. Open
-a no-project conversation here on the old account and paste the prompt
-saved at `memory-capture-prompt.md` in this folder. Save the response
-as `memory-capture.md` in this same folder — Track B will pick it up
-during the memory seeding phase.
+this account, whichever comes first): capture your global memory. In
+**Claude Chat** (claude.ai in your browser, or the Chat surface in
+Claude Desktop — NOT Cowork), sign in to the OLD account, start a
+no-project conversation, and paste one of the prompts in
+`memory-capture-prompt.md` in this folder (the file walks you through
+choosing between the wholesale and corporate-carve-out variants).
+Save Claude's response as `memory-capture.md` in this same folder —
+Track B will pick it up during the memory seeding phase.
 
 Full step-by-step is in **`README - Final Transition to New Account.md`**
 in this folder. The skill-assisted path is at the top; manual fallback
@@ -1117,23 +1123,31 @@ work context, communication preferences, recurring patterns, and so
 on. On this account Claude doesn't know any of that yet, so we'll
 load it now before anything else.
 
+Heads up: account-level memory is read and written through **Claude
+Chat** (claude.ai in a browser, or the Chat surface in Claude
+Desktop), not in Cowork. So you'll do this part there — not in this
+Cowork conversation — then come back here to continue.
+
 To seed it:
 
-1. Open a new conversation in Cowork on this account — **no project
-   selected** (just a fresh chat).
-2. Upload `memory-capture.md` from the migration hub folder.
-3. Paste this prompt:
+1. Open **Claude Chat** (claude.ai in a browser, or the Chat surface
+   in Claude Desktop — NOT Cowork). Sign in to your NEW account.
+2. Start a new conversation — **no project selected** (just a fresh
+   chat).
+3. Attach `memory-capture.md` from the migration hub folder to the
+   conversation.
+4. Paste this prompt:
    *"I'm migrating from a previous Claude account. The attached
    `memory-capture.md` is a snapshot of everything you knew about me
    there — my role, work context, communication preferences,
    technical domains, recurring workflows, and other persistent
    context. Please review it and commit the relevant facts to your
    memory of me on this account. Be thorough."*
-4. Wait for Claude to confirm what's been saved.
+5. Wait for Claude to confirm what's been saved.
 
-Come back here and say **"done"** when finished. Or **"skip"** if you
-didn't capture memory on the old side (or don't want global memory
-seeded), or **"quit"** to stop the migration.
+Come back here (Cowork) and say **"done"** when finished. Or
+**"skip"** if you didn't capture memory on the old side (or don't
+want global memory seeded), or **"quit"** to stop the migration.
 ```
 
 ### Prompt B-MS-2 — memory seed done confirmation
@@ -1475,30 +1489,32 @@ No binaries to recover — moving on.
 Almost done — let's validate that your global memory came across
 correctly.
 
-In a new no-project conversation on this account, you'll ask Claude
-to summarize everything it knows about you, then compare against
-`memory-capture.md` from the migration hub.
+Validation reads account-level memory, which is exposed through
+**Claude Chat** (claude.ai in a browser, or the Chat surface in
+Claude Desktop), not in Cowork. So like the seeding step, this part
+happens in Claude Chat, then you come back here.
 
 To run validation:
 
-1. Open a new conversation in Cowork on this account — **no project
-   selected**.
-2. Paste this prompt:
+1. Open **Claude Chat** (claude.ai in a browser, or the Chat surface
+   in Claude Desktop — NOT Cowork). Sign in to your NEW account.
+2. Start a new conversation — **no project selected**.
+3. Paste this prompt:
    *"Based on everything you know about me, tell me: who I am and
    what I do, what projects or topics are top of mind, how I prefer
    to communicate, any tools or domains I work in, and anything else
    you consider important context. Be thorough — I'm checking that a
    migration was successful."*
-3. Compare Claude's response against `memory-capture.md` in this hub
+4. Compare Claude's response against `memory-capture.md` in this hub
    folder.
-4. If anything important is missing or wrong, you have two options:
-   - Add a memory edit on this account directly.
-   - Upload `memory-capture.md` again and ask Claude to fill in the
+5. If anything important is missing or wrong, you have two options:
+   - Add a memory edit on the Claude Chat conversation directly.
+   - Attach `memory-capture.md` again and ask Claude to fill in the
      gaps.
 
-Come back here and say **"done"** when validation looks good.
-**"skip"** if you didn't seed memory (or want to skip validation), or
-**"quit"** to stop.
+Come back here (Cowork) and say **"done"** when validation looks
+good. **"skip"** if you didn't seed memory (or want to skip
+validation), or **"quit"** to stop.
 ```
 
 ### Prompt B-V-2 — validation done

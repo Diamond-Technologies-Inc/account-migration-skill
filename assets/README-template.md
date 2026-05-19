@@ -97,17 +97,29 @@ Cowork's auto-memory doesn't migrate between accounts. If
 `memory-capture.md` doesn't exist yet in this hub folder, capture it
 now from the **old** account before deletion.
 
-Open a new conversation on the old account (no project selected) and
-paste the prompt saved at `memory-capture-prompt.md` in this hub
-folder. Save Claude's response as `memory-capture.md` next to this
+In **Claude Chat** (claude.ai in a browser, or the Chat surface in
+Claude Desktop — NOT Cowork), sign in to the OLD account and start a
+new conversation with no project selected. Paste one of the prompts
+saved at `memory-capture-prompt.md` in this hub folder (the file walks
+you through choosing between the wholesale and corporate-carve-out
+variants). Save Claude's response as `memory-capture.md` next to this
 README.
+
+(Account-level memory is read and written through Claude Chat —
+claude.ai web or Claude Desktop's Chat surface — not Cowork. That's
+why this step happens there.)
 
 ### Step 1 — Seed global memory on the new account
 
-In a no-project conversation on the **new** account, upload
-`memory-capture.md` and paste the prompt saved at
-`memory-seed-prompt.md` in this hub folder. Claude will commit the
-captured facts to its memory on this account.
+In **Claude Chat** (claude.ai in a browser, or the Chat surface in
+Claude Desktop — NOT Cowork), sign in to the NEW account and start a
+new conversation with no project selected. Attach `memory-capture.md`
+from this hub folder, then paste the prompt saved at
+`memory-seed-prompt.md`. Claude will commit the captured facts to
+its memory on this account.
+
+(Same reason as Step 0 — account-level memory lives on the Claude
+Chat surface, not in Cowork.)
 
 ### Step 2 — Recover unrecovered artifacts
 
@@ -206,8 +218,9 @@ The `unattributed-conversations/` folder holds your orphan chats
 
 ### Step 6 — Validate
 
-Open a fresh conversation on the new account (no project selected) and
-paste this prompt:
+In **Claude Chat** (claude.ai in a browser, or the Chat surface in
+Claude Desktop — NOT Cowork), sign in to the NEW account and start a
+fresh conversation with no project selected. Paste this prompt:
 
 ```
 Based on everything you know about me, tell me:
