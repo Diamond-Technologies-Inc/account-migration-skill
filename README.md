@@ -1,8 +1,8 @@
 # account-migration
 
-A Claude Skill that walks users through migrating projects, conversations, and accumulated context between two Claude accounts — bridging the gap that Anthropic's data export creates without an import.
+A Claude Skill that walks users through migrating projects, conversations, accumulated context, custom skills, and scheduled tasks between two Claude accounts — bridging the gap that Anthropic's data export creates without an import.
 
-> **Why this exists.** Anthropic exports your Claude data but doesn't import it. Conversation history in the export is flat and unattributed to projects; Cowork session storage is walled off from skills by design; custom instructions, project knowledge, and global memory don't migrate automatically. This skill drives a tracked, decision-driven walk-through across both source and destination accounts to bridge that gap.
+> **Why this exists.** Anthropic exports your Claude data but doesn't import it. Conversation history in the export is flat and unattributed to projects; Cowork session storage is walled off from skills by design; custom instructions, project knowledge, and global memory don't migrate automatically; custom `.skill` installers and scheduled tasks have to be reinstalled and recreated by hand. This skill drives a tracked, decision-driven walk-through across both source and destination accounts to bridge that gap — capturing each category from the old account and actively re-establishing it on the new account.
 
 ## What it does
 
