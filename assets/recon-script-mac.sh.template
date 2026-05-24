@@ -1,0 +1,112 @@
+#!/usr/bin/env bash
+# account-migration session recon — macOS (bash + python3)
+#
+# WHAT THIS DOES
+#   Walks every per-session JSON file under the Cowork install root and writes
+#   a CSV of seven non-sensitive fields per session: sessionId, spaceId, title,
+#   createdAt, lastActivityAt, isArchived, userSelectedFolders. The skill reads
+#   this CSV to attribute sessions to projects (via spaceId) and to recover the
+#   working-folder reattach list per project (via userSelectedFolders).
+#
+# WHY YOU'RE RUNNING IT
+#   The Cowork bash sandbox can see the session JSONs exist but can't read them
+#   (the install root isn't in any sandbox mount). Your native shell can. This
+#   script runs in your native shell, reads what the sandbox can't, and hands
+#   the result back through a CSV.
+#
+# WHAT IT DOES NOT READ
+#   Deliberately skips initialMessage, mcqAnswers, systemPrompt, and
+#   enabledMcpTools — those fields can carry content from unrelated projects.
+#   This script only pulls non-sensitive metadata.
+#
+# OUTPUT LOCATION
+#   By default the CSV lands next to this script — whatever folder you saved
+#   it into. That keeps script + output paired and avoids guessing where on
+#   your machine is writable. If the write fails (some folders refuse writes
+#   from native shells), copy this .sh to any other folder on your machine
+#   and re-run from there. When it finishes, move the CSV back into the
+#   skill's hub folder; the skill will pick it up.
+#
+# REQUIREMENTS
+#   bash + python3. python3 is preinstalled on most macOS versions. If missing:
+#       xcode-select --install
+#
+# STATUS
+#   The Windows version of this recon technique is verified on a real Cowork
+#   install. The macOS path-translation rule used by the SKILL to fill the
+#   {{BASE_PATH}} placeholder is theoretical as of v1.5 — based on the
+#   principle that the sandbox mount table's SOURCE field carries the real host
+#   path. If the {{BASE_PATH}} below doesn't exist on your machine when you run
+#   this script, that's the rule that needs adjustment; see the skill's
+#   references/architecture-notes.md.
+
+set -euo pipefail
+
+# Skill-substituted values (the lines below this comment block):
+#   BASE  is the install root (.../local-agent-mode-sessions/<account>/<install>)
+#   OUT   is where to write the CSV (default: $HOME/Downloads/sessions-recon.csv)
+BASE="{{BASE_PATH}}"
+OUT="{{OUTPUT_CSV}}"
+
+if [ ! -d "$BASE" ]; then
+    echo ""
+    echo "ERROR: install root not found:"
+    echo "  $BASE"
+    echo ""
+    echo "On macOS the skill's path-translation rule for the virtiofs mount"
+    echo "source is theoretical as of v1.5. If the directory above does not"
+    echo "exist, check the skill's architecture-notes and report what you"
+    echo "see — that's the rule that needs adjustment."
+    exit 1
+fi
+
+mkdir -p "$(dirname "$OUT")"
+
+echo "Scanning session JSONs under:"
+echo "  $BASE"
+echo ""
+
+python3 - "$BASE" "$OUT" <<'PY'
+import csv, glob, json, os, sys
+
+base, out = sys.argv[1], sys.argv[2]
+rows = []
+skipped = 0
+for f in sorted(glob.glob(os.path.join(base, "local_*.json"))):
+    try:
+        with open(f, encoding="utf-8") as fh:
+            d = json.load(fh)
+        rows.append({
+            "sessionId":            d.get("sessionId", ""),
+            "spaceId":              d.get("spaceId", "") or "",
+            "title":                d.get("title", ""),
+            "createdAt":            d.get("createdAt", ""),
+            "lastActivityAt":       d.get("lastActivityAt", ""),
+            "isArchived":           d.get("isArchived", ""),
+            "userSelectedFolders":  " | ".join(d.get("userSelectedFolders") or []),
+        })
+    except Exception as e:
+        skipped += 1
+        print(f"Skipped {os.path.basename(f)}: {e}", file=sys.stderr)
+
+if not rows:
+    print(f"ERROR: no session JSONs parsed from {base}.", file=sys.stderr)
+    sys.exit(1)
+
+rows.sort(key=lambda r: r["createdAt"] or 0)
+fieldnames = ["sessionId", "spaceId", "title", "createdAt",
+              "lastActivityAt", "isArchived", "userSelectedFolders"]
+with open(out, "w", newline="", encoding="utf-8") as fh:
+    w = csv.DictWriter(fh, fieldnames=fieldnames)
+    w.writeheader()
+    w.writerows(rows)
+
+print(f"Wrote {len(rows)} session rows to:")
+print(f"  {out}")
+if skipped:
+    print(f"({skipped} unreadable JSON file(s) skipped.)", file=sys.stderr)
+PY
+
+echo ""
+echo "Next step: move this CSV into the skill's hub folder so the skill"
+echo "can pick it up and continue."

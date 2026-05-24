@@ -29,8 +29,8 @@ through everything else.
    common scenarios:
    - Same workstation as the old account → the folder is already at
      its original path.
-   - OneDrive / Dropbox / Drive sync → wait for the sync to finish on
-     this machine before continuing.
+   - Via a cloud-sync service (whichever you use) → wait for the sync
+     to finish on this machine before continuing.
    - Manual transfer (USB drive, network share, etc.) → put the hub
      folder wherever you'd like on this machine.
 
@@ -181,16 +181,15 @@ Then, on the **new** account, for each project you're bringing across:
 - [ ] Name it the same as it was on the old account.
 - [ ] Open `transition-data/project-blueprint.md`. Copy the **Custom
       Instructions** section into the new project's settings.
-- [ ] Start a conversation. Paste this prompt (it's also in the
-      project's `_PROJECT_BRIEF.md` under "Resuming on the new account"):
+- [ ] Start a fresh conversation. Paste this prompt as the first message
+      (it's also in the project's `_PROJECT_BRIEF.md` under "Resuming on
+      the new account"):
 
 ```
 This is a project I'm migrating from my old Claude account. Read
-`transition-data/project-blueprint.md` for full context, then treat
-its **Recommended Starting Prompt** section as my first directive
-— that's the project-tailored resumption point. Knowledge files
-referenced in the blueprint are in `knowledge/` (for reconstructed
-projects) or in this project's folder (for Cowork projects).
+`transition-data/project-blueprint.md` for the full project context,
+then treat its Section 7 — Recommended Starting Prompt — as your
+first directive.
 ```
 
 - [ ] Repeat for each project.
@@ -200,6 +199,36 @@ projects) or in this project's folder (for Cowork projects).
   upload each `.skill` file from the `skills\` subfolder of this hub.
   If your organization has a curated skill registry, install from
   there instead.
+- [ ] **Recreate scheduled tasks (if any).** If
+  `scheduled-tasks-export.md` exists at the hub root, the migration
+  skill captured one or more Cowork scheduled tasks from the old
+  account. **The skill-assisted Track B walks you through recreating
+  them automatically** (Step 8.5 — fires between the per-project
+  walk-through and binary recovery). For each captured task, the
+  skill displays the spec and prompts `recreate / skip / quit`; on
+  `recreate` it calls the scheduled-tasks MCP directly to create the
+  task on this account using the cron and prompt verbatim from the
+  export.
+
+  **Manual fallback (if you're not running the skill or skipped Step 8.5):**
+  open `scheduled-tasks-export.md`, and for each task in the file tell
+  Claude in a Cowork conversation *"create a scheduled task"*, then
+  feed it the cron expression and prompt from the export. Same outcome,
+  just hand-driven instead of skill-driven.
+
+  Either way: for tasks with external dependencies (attached working
+  folders, Windows backup jobs, etc.), re-attach the referenced folders
+  to each recreated task via *Cowork → that task's settings*, and
+  confirm the external state still exists on the new-account machine
+  before the next scheduled fire. The skill's Step 8.5 wrap surfaces
+  this reminder per task; the export file calls it out per task too.
+- [ ] **Per-project cleanup (optional).** Once each project has
+  bootstrapped cleanly on the new account, the project's
+  `transition-data/` folder AND `_PROJECT_BRIEF.md` at the project root
+  are safe to delete — they are migration scaffolding only. The
+  project's working files, `conversation-history/` archive, and
+  restored Cowork memory are what's load-bearing going forward. Keep
+  them as a migration record if you prefer; nothing depends on either.
 
 ### Step 5 — Review the catch-all
 

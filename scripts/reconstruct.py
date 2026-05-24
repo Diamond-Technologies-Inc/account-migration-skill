@@ -1,76 +1,97 @@
 #!/usr/bin/env python3
-"""reconstruct.py - Build per-project layouts in destination folders from
-extracted transcripts + export project JSONs. Routes per the user's
-walk-through decisions captured in the routing dict below."""
+"""reconstruct.py — Build per-project layouts in destination folders from
+extracted transcripts + export project JSONs.
 
-import csv, json, os, shutil, sys, re
+Reads the routing dict (the orchestrator's per-project decisions from the
+Track A walk-through) from a JSON file. The orchestrator writes that JSON
+before invoking this script. All paths come in as CLI arguments — no
+hardcoded scratch directories or project names live in this source.
+
+Routing JSON schema (dict keyed by user-facing project name):
+
+    {
+      "Display Name of Project": {
+        "action": "reconstruct_in_place" | "route_to_catchall",
+        "folder_name": "destination folder name on disk",
+        "export_name": "name as it appears in the export's projects_manifest.csv",
+        "export_uuid": "uuid of the project's JSON in export-unzipped/projects/",
+        "reason": "(route_to_catchall only) human-readable reason"
+      }
+    }
+
+Per-action expectations:
+
+    reconstruct_in_place — writes a full project layout to <outdir>/<folder_name>/.
+        Requires: folder_name, export_name, export_uuid.
+        Produces: knowledge/, conversation-history/, _PROJECT_BRIEF.md.
+
+    route_to_catchall — writes transcripts to <outdir>/<catchall_name>/<folder_name>/.
+        Requires: folder_name, reason.
+        Produces: transcripts + INDEX.md + _MIGRATION_NOTE.md inside the subfolder.
+        (The reshape_and_extract pass later moves the transcripts under
+        conversation-history/ inside the subfolder.)
+
+Usage:
+
+    python3 reconstruct.py \\
+        --extracted   <path>   \\
+        --attribution <path>   \\
+        --export      <path>   \\
+        --routing     <path>   \\
+        --outdir      <path>   \\
+        [--catchall-name <name>]
+
+Where:
+    --extracted    The output dir produced by extract_export.py. Must
+                   contain transcripts/, raw/, and
+                   conversations_manifest.csv.
+    --attribution  Path to attribution_map.csv (produced by
+                   parse_allchats.py).
+    --export       The unzipped export root. Must contain projects/
+                   with one JSON per project.
+    --routing      Path to the routing JSON file (schema above).
+    --outdir       Destination root. Each reconstructed project lands at
+                   <outdir>/<folder_name>/; catchall content lands at
+                   <outdir>/<catchall_name>/.
+    --catchall-name  Folder name for the catch-all project at the
+                     destination. Default: "Migrated Conversation History".
+"""
+
+import argparse
+import csv
+import json
+import re
+import shutil
+import sys
 from datetime import datetime
 from pathlib import Path
 
-SCRATCH = Path("/sessions/elegant-dazzling-cerf/mnt/outputs/run")
-EXPORT_PROJECTS = SCRATCH / "export-unzipped" / "projects"
-TRANSCRIPTS = SCRATCH / "run2-extracted" / "transcripts"
-RAW = SCRATCH / "run2-extracted" / "raw"
-ATTR_CSV = SCRATCH / "run2-hub-stage" / "attribution_map.csv"
-CONV_CSV = SCRATCH / "run2-extracted" / "conversations_manifest.csv"
 
-MNT = Path("/sessions/elegant-dazzling-cerf/mnt")
-CATCHALL = MNT / "Migrated Conversation History"
+DEFAULT_CATCHALL_NAME = "Migrated Conversation History"
 
-# Routing decisions captured from the walk-through. Keyed by AllChats name.
-ROUTING = {
-    "CAT to CSF Transition [imported-archive]": {
-        "action": "route_to_catchall",
-        "subfolder_name": "CAT to CSF Transition [imported-archive]",
-        "reason": "existing folder picked (CSF 2.0) — protected, conversations routed",
-        "export_name": "CAT to CSF Transition [imported-archive]",
-        "export_uuid": "019ced86-e1b7-718a-baee-866af833e4d0",
-    },
-    "CB - GPO Review": {
-        "action": "reconstruct_in_place",
-        "folder": MNT / "CB - GPO Review",
-        "export_name": "CB - GPO Review",
-        "export_uuid": "019bb78b-96e3-720c-86ec-12fcceac97b2",
-    },
-    "Corporate AI Policy Transition": {
-        "action": "route_to_catchall",
-        "subfolder_name": "Corporate AI Policy Transition",
-        "reason": "skipped — renamed on web from 'Corporate AI Policy'",
-        "export_name": "Corporate AI Policy",
-        "export_uuid": "019e0889-3698-7093-9653-f88d0aa0521c",
-    },
-    "Developing a Work Voice": {
-        "action": "reconstruct_in_place",
-        "folder": MNT / "Developing a Work Voice",
-        "export_name": "Developing a Work Voice",
-        "export_uuid": "019deab8-fb8a-71b3-a744-6703bf34aab2",
-    },
-    "OCSP Study": {
-        "action": "reconstruct_in_place",
-        "folder": MNT / "OCSP Study",
-        "export_name": "OCSP Study",
-        "export_uuid": "019af510-c482-7759-a6b5-77f4c226a0f5",
-    },
-    "Personal - Workspace": {
-        "action": "reconstruct_in_place",
-        "folder": MNT / "Personal - Workspace",
-        "export_name": "Personal - Workspace",
-        "export_uuid": "019deb7f-1a62-727a-b730-a9411e5c0b2a",
-    },
-    "Vendor Setup for Heaven on earth": {
-        "action": "reconstruct_in_place",
-        "folder": MNT / "Vendor Setup for Heaven on earth",
-        "export_name": "Vendor Setup for Heaven on earth",
-        "export_uuid": "019d10c9-7107-70f4-ba3d-077a7da09778",
-    },
-    "VulScan Analysis [imported-archive]": {
-        "action": "route_to_catchall",
-        "subfolder_name": "VulScan Analysis [imported-archive]",
-        "reason": "skipped",
-        "export_name": "VulScan Analysis [imported-archive]",
-        "export_uuid": "019bb321-acec-7009-bb0c-053f4ddd2c74",
-    },
-}
+# Visible mojibake artifacts from double-UTF-8 encoding (export-side defect:
+# UTF-8 bytes interpreted as Windows-1252, then re-encoded as UTF-8). When any
+# of these sequences appears in a knowledge file's text, the file likely has
+# encoding damage that the user may want to compare against the original.
+MOJIBAKE_PATTERNS = (
+    "Â ",       # nbsp mojibake (very common)
+    "â€",       # em-dash, smart quotes, ellipsis mojibake leading
+    "âœ",       # check / x emoji mojibake leading
+    "âš",       # warning sign mojibake leading
+    "âžž",      # arrow mojibake
+    "Ã©",       # é mojibake
+    "Ã¨",       # è mojibake
+    "Ã¢",       # â mojibake (different from leading-â above)
+)
+
+
+def detect_mojibake(text):
+    """Return True if the text contains visible mojibake patterns indicative
+    of double-UTF-8 encoding in the source export."""
+    for pat in MOJIBAKE_PATTERNS:
+        if pat in text:
+            return True
+    return False
 
 
 def safe_filename(name):
@@ -78,37 +99,49 @@ def safe_filename(name):
     return re.sub(r"[^\w\-\.\[\] ]", "_", name)
 
 
-def load_attribution():
+def load_attribution(attribution_csv):
     """uuid -> project_name (or '' for unattributed)."""
-    with open(ATTR_CSV, encoding="utf-8") as f:
+    with open(attribution_csv, encoding="utf-8") as f:
         return {r["uuid"]: r["project_assignment"] for r in csv.DictReader(f)}
 
 
-def load_conv_manifest():
-    """uuid -> manifest row."""
-    with open(CONV_CSV, encoding="utf-8") as f:
+def load_attribution_full(attribution_csv):
+    """Full per-uuid row (used to inspect in_allchats column for orphan filtering)."""
+    with open(attribution_csv, encoding="utf-8") as f:
         return {r["uuid"]: r for r in csv.DictReader(f)}
 
 
-def load_project_json(uuid):
-    """Load a project's full export JSON."""
-    path = EXPORT_PROJECTS / f"{uuid}.json"
+def load_conv_manifest(conv_csv):
+    """uuid -> manifest row."""
+    with open(conv_csv, encoding="utf-8") as f:
+        return {r["uuid"]: r for r in csv.DictReader(f)}
+
+
+def load_routing(routing_json):
+    """Load the routing decisions from JSON."""
+    with open(routing_json, encoding="utf-8") as f:
+        return json.load(f)
+
+
+def load_project_json(export_projects_dir, uuid):
+    """Load a project's full export JSON. Returns None if not present."""
+    path = export_projects_dir / f"{uuid}.json"
     if not path.exists():
         return None
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def find_transcript(uuid, manifest):
+def find_transcript(extracted_dir, uuid, manifest):
     """Find the transcript path for a conv uuid."""
     m = manifest.get(uuid)
     if not m:
         return None
-    return SCRATCH / "run2-extracted" / m["transcript_file"]
+    return extracted_dir / m["transcript_file"]
 
 
-def get_opener(uuid):
+def get_opener(raw_dir, uuid):
     """First ~100 chars of the first human message in a conv, for the INDEX."""
-    raw_path = RAW / f"{uuid}.json"
+    raw_path = raw_dir / f"{uuid}.json"
     if not raw_path.exists():
         return ""
     try:
@@ -152,8 +185,9 @@ def write_index(path, conv_rows):
     path.write_text("\n".join(lines), encoding="utf-8")
 
 
-def write_project_brief(path, project, conv_rows, action):
+def write_project_brief(path, project, conv_rows, action, mojibake_files=None):
     """Write _PROJECT_BRIEF.md for a reconstructed project."""
+    mojibake_files = mojibake_files or []
     lines = [
         f"# {project.get('name', '')}",
         "",
@@ -218,6 +252,17 @@ def write_project_brief(path, project, conv_rows, action):
         "",
         "## Notes",
         "",
+    ]
+    if mojibake_files:
+        lines.append(
+            f"- **Mojibake detected** in {len(mojibake_files)} knowledge "
+            f"file(s): {', '.join(f'`{f}`' for f in mojibake_files)}. The "
+            f"export-side double-UTF-8 encoding produced visible artifacts "
+            f"(`Â`, `âœ…`, `â€`, etc.) in these files. Compare against the "
+            f"original on-disk copies if available and replace as needed; "
+            f"the migration cannot reliably round-trip the damage."
+        )
+    lines += [
         "- Binary knowledge docs (PDFs, .docx, etc.) come through as **extracted text** in the export.",
         "- Conversation-uploaded files are listed by name in the transcripts but their binaries are not preserved.",
         "- This brief is generated by the project-import skill. Edit freely after Track B relink.",
@@ -253,10 +298,10 @@ def write_migration_note(path, project_name, reason, count):
     path.write_text("\n".join(lines), encoding="utf-8")
 
 
-def write_catchall_brief(path, totals):
+def write_catchall_brief(path, catchall_name, totals):
     """Write the catch-all project's own _PROJECT_BRIEF.md."""
     lines = [
-        "# Migrated Conversation History",
+        f"# {catchall_name}",
         "",
         "## What this is",
         "",
@@ -284,10 +329,16 @@ def write_catchall_brief(path, totals):
     path.write_text("\n".join(lines), encoding="utf-8")
 
 
-def reconstruct_in_place(project_name, route, attribution, manifest):
-    """Build the project layout inside the picked folder."""
-    folder = route["folder"]
-    project = load_project_json(route["export_uuid"])
+def reconstruct_in_place(project_name, route, paths):
+    """Build the project layout inside the picked folder.
+
+    paths is a dict containing resolved Path objects for: outdir,
+    export_projects_dir, extracted_dir, raw_dir, attribution, manifest.
+    """
+    folder = paths["outdir"] / route["folder_name"]
+    folder.mkdir(parents=True, exist_ok=True)
+
+    project = load_project_json(paths["export_projects_dir"], route["export_uuid"])
     if project is None:
         print(f"  WARN: no export JSON for {project_name}")
         project = {"name": project_name, "uuid": route["export_uuid"]}
@@ -295,18 +346,22 @@ def reconstruct_in_place(project_name, route, attribution, manifest):
     # knowledge/
     knowledge_dir = folder / "knowledge"
     knowledge_dir.mkdir(exist_ok=True)
+    mojibake_files = []
     for d in project.get("docs", []) or []:
         fn = safe_filename(d.get("filename", "doc.txt"))
-        (knowledge_dir / fn).write_text(d.get("content", "") or "", encoding="utf-8")
+        content = d.get("content", "") or ""
+        (knowledge_dir / fn).write_text(content, encoding="utf-8")
+        if detect_mojibake(content):
+            mojibake_files.append(fn)
 
     # conversation-history/
     convs_dir = folder / "conversation-history"
     convs_dir.mkdir(exist_ok=True)
-    conv_uuids = [u for u, p in attribution.items() if p == project_name]
+    conv_uuids = [u for u, p in paths["attribution"].items() if p == project_name]
     conv_rows = []
     for u in conv_uuids:
-        src = find_transcript(u, manifest)
-        m = manifest.get(u, {})
+        src = find_transcript(paths["extracted_dir"], u, paths["manifest"])
+        m = paths["manifest"].get(u, {})
         if src and src.exists():
             dest = convs_dir / src.name
             shutil.copy2(src, dest)
@@ -315,25 +370,27 @@ def reconstruct_in_place(project_name, route, attribution, manifest):
                 "created_at": m.get("created_at", ""),
                 "messages": m.get("messages", ""),
                 "filename": src.name,
-                "opener": get_opener(u),
+                "opener": get_opener(paths["raw_dir"], u),
             })
     conv_rows.sort(key=lambda r: r["created_at"])
 
     write_index(convs_dir / "INDEX.md", conv_rows)
     write_project_brief(folder / "_PROJECT_BRIEF.md", project, conv_rows,
-                        "reconstructed in place (empty folder picked)")
+                        "reconstructed in place (empty folder picked)",
+                        mojibake_files=mojibake_files)
     return len(conv_rows), len(project.get("docs", []) or [])
 
 
-def route_to_catchall(project_name, route, attribution, manifest):
+def route_to_catchall(project_name, route, paths):
     """Build a per-project subfolder in the catch-all."""
-    subfolder = CATCHALL / route["subfolder_name"]
-    subfolder.mkdir(exist_ok=True)
-    conv_uuids = [u for u, p in attribution.items() if p == project_name]
+    subfolder = paths["catchall_dir"] / route["folder_name"]
+    subfolder.mkdir(parents=True, exist_ok=True)
+
+    conv_uuids = [u for u, p in paths["attribution"].items() if p == project_name]
     conv_rows = []
     for u in conv_uuids:
-        src = find_transcript(u, manifest)
-        m = manifest.get(u, {})
+        src = find_transcript(paths["extracted_dir"], u, paths["manifest"])
+        m = paths["manifest"].get(u, {})
         if src and src.exists():
             dest = subfolder / src.name
             shutil.copy2(src, dest)
@@ -342,31 +399,39 @@ def route_to_catchall(project_name, route, attribution, manifest):
                 "created_at": m.get("created_at", ""),
                 "messages": m.get("messages", ""),
                 "filename": src.name,
-                "opener": get_opener(u),
+                "opener": get_opener(paths["raw_dir"], u),
             })
     conv_rows.sort(key=lambda r: r["created_at"])
     write_index(subfolder / "INDEX.md", conv_rows)
     write_migration_note(subfolder / "_MIGRATION_NOTE.md",
-                         project_name, route["reason"], len(conv_rows))
+                         project_name, route.get("reason", ""), len(conv_rows))
     return len(conv_rows)
 
 
-def route_orphans(attribution, manifest):
+def route_orphans(paths):
     """Build the unattributed-conversations folder in the catch-all."""
-    folder = CATCHALL / "unattributed-conversations"
-    folder.mkdir(exist_ok=True)
-    orphan_uuids = [u for u, p in attribution.items() if not p and manifest.get(u, {}).get("messages", "0") != "0"]
-    # Note: filter to orphans that are in AllChats but have no project AND have messages
-    # (deleted conversations are the in-manifest-not-in-AllChats set; we don't want those)
-    # But attribution_map.csv has in_allchats column to check
-    with open(ATTR_CSV, encoding="utf-8") as f:
-        in_allchats = {r["uuid"]: r["in_allchats"] for r in csv.DictReader(f)}
-    orphan_uuids = [u for u in orphan_uuids if in_allchats.get(u) == "yes"]
+    folder = paths["catchall_dir"] / "unattributed-conversations"
+    folder.mkdir(parents=True, exist_ok=True)
+
+    # Orphans: in AllChats but no project AND have messages.
+    # in_allchats column distinguishes "current on claude.ai" from
+    # "in manifest only (deleted but still in the JSON)".
+    attribution_full = paths["attribution_full"]
+    orphan_uuids = []
+    for u, row in attribution_full.items():
+        if row.get("in_allchats") != "yes":
+            continue
+        if row.get("project_assignment"):
+            continue
+        m = paths["manifest"].get(u, {})
+        if m.get("messages", "0") == "0":
+            continue
+        orphan_uuids.append(u)
 
     conv_rows = []
     for u in orphan_uuids:
-        src = find_transcript(u, manifest)
-        m = manifest.get(u, {})
+        src = find_transcript(paths["extracted_dir"], u, paths["manifest"])
+        m = paths["manifest"].get(u, {})
         if src and src.exists():
             dest = folder / src.name
             shutil.copy2(src, dest)
@@ -375,7 +440,7 @@ def route_orphans(attribution, manifest):
                 "created_at": m.get("created_at", ""),
                 "messages": m.get("messages", ""),
                 "filename": src.name,
-                "opener": get_opener(u),
+                "opener": get_opener(paths["raw_dir"], u),
             })
     conv_rows.sort(key=lambda r: r["created_at"])
     write_index(folder / "INDEX.md", conv_rows)
@@ -383,21 +448,97 @@ def route_orphans(attribution, manifest):
 
 
 def main():
-    attribution = load_attribution()
-    manifest = load_conv_manifest()
+    ap = argparse.ArgumentParser(
+        description=("Build per-project destination layouts from extracted "
+                     "transcripts + export project JSONs."))
+    ap.add_argument("--extracted", required=True,
+                    help="extract_export.py outdir (contains transcripts/, raw/, "
+                         "conversations_manifest.csv).")
+    ap.add_argument("--attribution", required=True,
+                    help="Path to attribution_map.csv (output of parse_allchats.py).")
+    ap.add_argument("--export", required=True,
+                    help="Unzipped export root (contains projects/ with project JSONs).")
+    ap.add_argument("--routing", required=True,
+                    help="Path to the routing JSON file (see module docstring for schema).")
+    ap.add_argument("--outdir", required=True,
+                    help="Destination root for reconstructed projects.")
+    ap.add_argument("--catchall-name", default=DEFAULT_CATCHALL_NAME,
+                    help=f"Folder name for the catch-all project. "
+                         f"Default: '{DEFAULT_CATCHALL_NAME}'.")
+    args = ap.parse_args()
 
-    print(f"Loaded {len(attribution)} attribution rows, {len(manifest)} manifest rows.\n")
+    extracted_dir = Path(args.extracted).resolve()
+    attribution_csv = Path(args.attribution).resolve()
+    export_root = Path(args.export).resolve()
+    routing_json = Path(args.routing).resolve()
+    outdir = Path(args.outdir).resolve()
+
+    # Validate inputs exist.
+    for p, label in [
+        (extracted_dir, "--extracted"),
+        (attribution_csv, "--attribution"),
+        (export_root, "--export"),
+        (routing_json, "--routing"),
+    ]:
+        if not p.exists():
+            print(f"ERROR: {label} does not exist: {p}", file=sys.stderr)
+            return 1
+
+    conv_csv = extracted_dir / "conversations_manifest.csv"
+    if not conv_csv.exists():
+        print(f"ERROR: conversations_manifest.csv missing under --extracted: {conv_csv}",
+              file=sys.stderr)
+        return 1
+
+    raw_dir = extracted_dir / "raw"
+    export_projects_dir = export_root / "projects"
+
+    outdir.mkdir(parents=True, exist_ok=True)
+    catchall_dir = outdir / args.catchall_name
+    catchall_dir.mkdir(parents=True, exist_ok=True)
+
+    # Load data.
+    attribution = load_attribution(attribution_csv)
+    attribution_full = load_attribution_full(attribution_csv)
+    manifest = load_conv_manifest(conv_csv)
+    routing = load_routing(routing_json)
+
+    print(f"Loaded {len(attribution)} attribution rows, "
+          f"{len(manifest)} manifest rows, "
+          f"{len(routing)} routing entries.\n")
+
+    paths = {
+        "outdir": outdir,
+        "catchall_dir": catchall_dir,
+        "extracted_dir": extracted_dir,
+        "raw_dir": raw_dir,
+        "export_projects_dir": export_projects_dir,
+        "attribution": attribution,
+        "attribution_full": attribution_full,
+        "manifest": manifest,
+    }
 
     results = []
     catchall_subfolders = []
-    for name, route in sorted(ROUTING.items()):
-        if route["action"] == "reconstruct_in_place":
-            convs, docs = reconstruct_in_place(name, route, attribution, manifest)
-            results.append(f"  ✓ {name}: reconstructed in place — {convs} convs, {docs} docs")
-        elif route["action"] == "route_to_catchall":
-            convs = route_to_catchall(name, route, attribution, manifest)
-            results.append(f"  → {name}: routed to catch-all ({route['reason']}) — {convs} convs")
-            catchall_subfolders.append({"name": name, "count": convs, "reason": route["reason"]})
+    for name in sorted(routing.keys()):
+        route = routing[name]
+        action = route.get("action", "")
+        if action == "reconstruct_in_place":
+            convs, docs = reconstruct_in_place(name, route, paths)
+            results.append(f"  ✓ {name}: reconstructed in place — "
+                           f"{convs} convs, {docs} docs")
+        elif action == "route_to_catchall":
+            convs = route_to_catchall(name, route, paths)
+            results.append(f"  → {name}: routed to catch-all "
+                           f"({route.get('reason','')}) — {convs} convs")
+            catchall_subfolders.append({
+                "name": route["folder_name"],
+                "count": convs,
+                "reason": route.get("reason", ""),
+            })
+        else:
+            print(f"  WARN: unknown action '{action}' for project '{name}', skipping",
+                  file=sys.stderr)
 
     print("Per-project results:")
     for r in results:
@@ -405,17 +546,19 @@ def main():
 
     print()
     print("Orphan conversations:")
-    orphans = route_orphans(attribution, manifest)
+    orphans = route_orphans(paths)
     print(f"  → unattributed-conversations: {orphans} convs")
 
     # Catch-all _PROJECT_BRIEF.md
     write_catchall_brief(
-        CATCHALL / "_PROJECT_BRIEF.md",
-        {"orphans": orphans, "subfolders": catchall_subfolders}
+        catchall_dir / "_PROJECT_BRIEF.md",
+        args.catchall_name,
+        {"orphans": orphans, "subfolders": catchall_subfolders},
     )
-    print("  ✓ wrote catch-all _PROJECT_BRIEF.md")
+    print(f"  ✓ wrote catch-all _PROJECT_BRIEF.md")
     print("\nDone.")
+    return 0
 
 
-if __name__ == '__main__':
-    main()
+if __name__ == "__main__":
+    sys.exit(main())

@@ -27,26 +27,27 @@ skill which side they're on. On "old" the skill displays the Part 1
 banner and proceeds to Prompt 1. On "new" the skill displays the Part 3
 banner and proceeds to the Track B opener.
 
-```
-═══[ Transitioning between 2 Claude Accounts ]═══
+### ▶ Skill speaking ◀
 
-This will be handled in 3 phases. The first two are performed in your
-old account and the third in your new account.
+> ═══[ Transitioning between 2 Claude Accounts ]═══
 
-There is no way to directly import conversations into the new account.
-The compromise is to extract the conversation history into individual
-files which are stored within a new Cowork Project. This archive
-project can then be searched and pruned as necessary.
+> This will be handled in 3 phases. The first two are performed in your
+> old account and the third in your new account.
 
-This skill will walk you through the necessary steps and allow you to
-make decisions about what data should be migrated.
+> There is no way to directly import conversations into the new account.
+> The compromise is to extract the conversation history into individual
+> files which are stored within a new Cowork Project. This archive
+> project can then be searched and pruned as necessary.
 
-Which side are you starting from?
+> This skill will walk you through the necessary steps and allow you to
+> make decisions about what data should be migrated.
 
-- Say **"old"** — preparing your old account for transfer (Parts 1 and 2).
-- Say **"new"** — picking up on your new account to relink everything
-  that was prepared on the old side (Part 3).
-```
+> Which side are you starting from?
+
+> - Say **old** — preparing your old account for transfer (Parts 1 and 2).
+> - Say **new** — picking up on your new account to relink everything
+>   that was prepared on the old side (Part 3).
+
 
 ### Prompt 0 decisions
 
@@ -63,6 +64,130 @@ Which side are you starting from?
 
 ---
 
+# Track A scope + install recon (between Prompt 0 and Part 1)
+
+Two short steps run between the Track A side-selection and the Part 1
+banner: ask whether the user is migrating their whole account or just
+one project this run, and do a one-time install recon that tells us
+which Cowork sessions belong to which project.
+
+## Scope-selection prompt
+
+Fires after the user says "old" at Prompt 0, BEFORE the Part 1 banner.
+
+### ▶ Skill speaking ◀
+
+> Before I dig in — are you migrating your whole account this run, or
+> just one specific project?
+
+>   - **all**   — every web/chat project + every Cowork project.
+>   - **one**   — a single named project. I'll skip everything else.
+>   - **quit**  — close the skill.
+
+> Most people pick **all** the first time and **one** for follow-up runs
+> (re-migrating a single project after a fix, validating a specific
+> project on the new account, etc.).
+
+
+## Single-project-name prompt
+
+Fires only if the user picks "one" at the scope-selection prompt.
+
+### ▶ Skill speaking ◀
+
+> Which project? Type the name as you remember it on the old account
+> (case doesn't matter; I'll match by substring). Examples:
+
+>   - "Newsletter"
+>   - "Q3 planning"
+>   - "the script library"
+
+> I'll look for it on both the web/chat side and the Cowork side. If I
+> find it in only one place, that's fine — projects often live on just
+> one side. If I can't find it at all, I'll show you what I did see so
+> you can spot a typo.
+
+
+## Single-project no-match prompt
+
+Fires only if `scope_target` matched zero candidates on BOTH sides
+after the install recon completes.
+
+### ▶ Skill speaking ◀
+
+> I couldn't find a project matching "<scope_target>" on either side.
+> Here's what I did find:
+
+>   Web/chat projects (from your export):
+>     - <name 1>
+>     - <name 2>
+>     - …
+
+>   Cowork projects (from the session recon):
+>     - <name 1>  (<N> sessions)
+>     - <name 2>  (<N> sessions)
+>     - …
+
+> Three options:
+
+>   - **pick** + a name from the lists above — I'll re-scope to that one.
+>   - **retry** — type a different name from scratch.
+>   - **quit** — close the skill.
+
+
+## Install recon — explainer
+
+Fires after the scope choice (one or all) and before the Part 1 banner.
+
+### ▶ Skill speaking ◀
+
+> One quick setup step. To know which Cowork sessions belong to which
+> project, I need a small piece of data that lives outside the sandbox I
+> run in — the per-session JSON files on your disk. I can't read those
+> from in here, but you can read them in a native shell and hand the
+> result back as a CSV.
+
+> I've put a small script next to this chat — it walks the session
+> files and writes a CSV with the bare metadata I need (session id,
+> project id, title, dates, working folders attached). Nothing
+> sensitive: no message content, no system prompts, no answers to
+> setup questions.
+
+> Save the script wherever you want on your machine. Run it in a normal
+> shell (PowerShell on Windows, Terminal on Mac — no admin needed). It
+> writes the CSV next to itself. Drop the CSV into this project's folder
+> when it's done.
+
+> Say **ready** once the CSV is in the folder. Or **skip** if you'd rather
+> not run it (I'll fall back to a slower, manual path for each Cowork
+> project). Or **quit** to close out.
+
+
+## Install recon — recon-summary
+
+Fires after the user says "ready" and the CSV parses cleanly.
+
+### ▶ Skill speaking ◀
+
+> Got it. The recon turned up:
+
+>   - <N_projects> projects with attributed sessions
+>   - <N_sessions> sessions total
+>   - <N_blank> sessions without a project (most are utility/background
+>     runs — I'll set those aside)
+>   - <N_folders> working folders identified across all projects
+
+>   <if migration_scope == "single">
+>   Matched your scope target ("<scope_target>") to:
+>     - <N_part1_matches> web/chat project(s)
+>     - <N_part2_matches> Cowork project(s)
+>   </if>
+
+> Heading into Part 1 next.
+
+
+---
+
 # Part 1 — preparing claude.ai web/chat projects (source account)
 
 ## Prompt 1 — "give me your two input files"
@@ -70,55 +195,56 @@ Which side are you starting from?
 Fires after the user says "old" at Prompt 0, preceded by the Part 1
 banner.
 
-```
-Project migration — Track A (Reconstruct)
+### ▶ Skill speaking ◀
 
-Hi. I'll take the projects and conversations from your old Claude
-account, rebuild them as complete folders on disk, and hand them off
-to your new account.
+> Project migration — Track A (Reconstruct)
 
-Before I start, I need two files. Both go into this project's folder.
+> Hi. I'll take the projects and conversations from your old Claude
+> account, rebuild them as complete folders on disk, and hand them off
+> to your new account.
 
-File 1 of 2 — your data export
+> Before I start, I need two files. Both go into this project's folder.
 
-On claude.ai (the account you're migrating from):
+> File 1 of 2 — your data export
 
-1. Click your avatar → Settings → Privacy.
-2. Click Export data. Anthropic emails you a download link, usually
-   within a few minutes (occasionally longer).
-3. Download the zip. It'll be named like
-   `data-YYYY-MM-DD-…-batch-0000.zip`.
-4. Move it into this project's folder. If your browser saved it
-   straight to `Downloads\`, drag it over.
+> On claude.ai (the account you're migrating from):
 
-Heads up: if your export produced multiple batch files (rare, only for
-very large accounts), bring all of them.
+> 1. Click your avatar → Settings → Privacy.
+> 2. Click Export data. Anthropic emails you a download link, usually
+>    within a few minutes (occasionally longer).
+> 3. Download the zip. It'll be named like
+>    `data-YYYY-MM-DD-…-batch-0000.zip`.
+> 4. Move it into this project's folder. If your browser saved it
+>    straight to `Downloads\`, drag it over.
 
-File 2 of 2 — a saved copy of your Chats page
+> Heads up: if your export produced multiple batch files (rare, only for
+> very large accounts), bring all of them.
 
-The export has every conversation but doesn't say which project each
-one belongs to. I'll recover that from a saved copy of your chats list.
+> File 2 of 2 — a saved copy of your Chats page
 
-1. On claude.ai, click Chats in the left sidebar.
-2. Scroll all the way to the bottom of the list. The page only loads
-   older chats as you scroll — if you don't reach the bottom, those
-   chats won't be in the saved file. Stop scrolling when nothing new
-   appears.
-3. File → Save Page As → choose "Webpage, Complete".
-     - Safari users: don't pick "Web Archive" — that's a binary
-       format I can't read. Choose "Page Source" instead.
-4. The default filename is `claude.html`. Rename it (anything works —
-   `chats.html`, `AllChats.html`, whatever) before saving.
-5. Save it into this project's folder. The save will also produce
-   a same-named `_files\` folder next to it — leave that alongside,
-   I won't use it but it's harmless.
+> The export has every conversation but doesn't say which project each
+> one belongs to. I'll recover that from a saved copy of your chats list.
 
-Ready check
+> 1. On claude.ai, click Chats in the left sidebar.
+> 2. Scroll all the way to the bottom of the list. The page only loads
+>    older chats as you scroll — if you don't reach the bottom, those
+>    chats won't be in the saved file. Stop scrolling when nothing new
+>    appears.
+> 3. File → Save Page As → choose "Webpage, Complete".
+>      - Safari users: don't pick "Web Archive" — that's a binary
+>        format I can't read. Choose "Page Source" instead.
+> 4. The default filename is `claude.html`. Rename it (anything works —
+>    `chats.html`, `AllChats.html`, whatever) before saving.
+> 5. Save it into this project's folder. The save will also produce
+>    a same-named `_files\` folder next to it — leave that alongside,
+>    I won't use it but it's harmless.
 
-Say "ready" once both files are in the folder. I'll list what I found
-before I start extracting, so you can confirm I'm working from the
-right inputs.
-```
+> Ready check
+
+> Say **ready** once both files are in the folder. I'll list what I found
+> before I start extracting, so you can confirm I'm working from the
+> right inputs.
+
 
 ### Prompt 1 decisions
 
@@ -146,18 +272,19 @@ right inputs.
 After user says "ready", skill displays inventory and proceeds without
 an additional gate.
 
-```
-Got it. In the folder I see:
+### ▶ Skill speaking ◀
 
-  • Export: `<export_filename>` (<export_size>)
-  • Chats save: `<chats_filename>` (<chats_size>)
+> Got it. In the folder I see:
 
-Both look right. Unpacking the export and parsing the Chats save now.
+>   • Export: `<export_filename>` (<export_size>)
+>   • Chats save: `<chats_filename>` (<chats_size>)
 
-This is pure file-sorting and organization as I split them into individual
-files and build an index. Boring work and takes about half a minute. Hang
-tight.
-```
+> Both look right. Unpacking the export and parsing the Chats save now.
+
+> This is pure file-sorting and organization as I split them into individual
+> files and build an index. Boring work and takes about half a minute. Hang
+> tight.
+
 
 ### Prompt 2 decisions
 
@@ -191,14 +318,15 @@ These are NOT Prompt 2 itself; they replace it when conditions don't hold.
 Single message after the scripts finish; no artificial "building tracker"
 filler — tracker reveal is a separate prompt immediately after.
 
-```
-All set! Let me show you what I've found.
+### ▶ Skill speaking ◀
 
-- ✓ **<N_total> conversations across <N_projects> projects** in your export.
-- ✓ **<N_attributed>** are attributed to specific projects → we'll walk through these one at a time.
-- ✓ **<N_orphans>** are loose chats with no project assignment.
-- ✓ **<N_dropped>** were deleted from claude.ai → dropped.
-```
+> All set! Let me show you what I've found.
+
+> - ✓ <N_total> conversations across <N_projects> projects in your export.
+> - ✓ <N_attributed> are attributed to specific projects → we'll walk through these one at a time.
+> - ✓ <N_orphans> are loose chats with no project assignment.
+> - ✓ <N_dropped> were deleted from claude.ai → dropped.
+
 
 ### Prompt 2.5 decisions
 
@@ -223,27 +351,28 @@ the tracker and in per-project prompts before the walk-through fires.
 Tracker is rendered as a Cowork sidebar artifact + `tracker.html` in the
 hub folder (dual rendering); user-facing copy mentions only the artifact.
 
-```
-I've opened your tracker.
+### ▶ Skill speaking ◀
 
-First step: set up the catch-all. This will be a Cowork project that
-collects any conversations without a clear home — both orphan chats
-with no project assignment, and conversations from projects you choose
-not to reconstruct.
+> I've opened your tracker.
 
-You'll need to create this project yourself, because Claude can't create
-Cowork projects. In Cowork:
+> First step: set up the catch-all. This will be a Cowork project that
+> collects any conversations without a clear home — both orphan chats
+> with no project assignment, and conversations from projects you choose
+> not to reconstruct.
 
-1. Start a new project → **Start from scratch**.
-2. Name it **Migrated Conversation History** (suggestion — use any
-   name you'd like; whatever you choose will appear on the tracker and
-   in the prompts that follow).
-3. Come back to this chat to continue.
+> You'll need to create this project yourself, because Claude can't create
+> Cowork projects. In Cowork:
 
-Say **"ready"** when the project is created. Once you do, I'll bring
-up a folder picker so you can select the project folder you just
-created.
-```
+> 1. Start a new project → Start from scratch.
+> 2. Name it Migrated Conversation History (suggestion — use any
+>    name you'd like; whatever you choose will appear on the tracker and
+>    in the prompts that follow).
+> 3. Come back to this chat to continue.
+
+> Say **ready** when the project is created. Once you do, I'll bring
+> up a folder picker so you can select the project folder you just
+> created.
+
 
 ### Prompt 3 decisions
 
@@ -264,57 +393,59 @@ before the skill calls `request_cowork_directory` (picker mode, no path).
 The bridge tells the user what's about to happen so the picker UI isn't
 abrupt. Same pattern repeats for every per-project pick.
 
-```
-Got it. Bringing up the folder picker now so you can select
-**<catchall_name>**'s folder.
-```
+### ▶ Skill speaking ◀
+
+> Got it. Bringing up the folder picker now so you can select
+> <catchall_name>'s folder.
+
 
 ## Prompt 4 — first per-project pick
 
 Verbose form (full rules + per-project import instruction). Subsequent
 prompts (Pattern 5–N) drop the verbose rules block.
 
-```
-Catch-all ready: **<catchall_name>** at
-`<catchall_folder_path>`.
+### ▶ Skill speaking ◀
 
-Heads up: the export contains both your active and archived chat
-projects. If you want to include any of the archived projects in this
-transition, you'll need to unarchive them first — otherwise you won't
-be able to import them.
+> Catch-all ready: <catchall_name> at
+> `<catchall_folder_path>`.
 
-Now I'll walk through your <N_projects> projects in alphabetical order.
-For each one we'll do the same thing:
+> Heads up: the export contains both your active and archived chat
+> projects. If you want to include any of the archived projects in this
+> transition, you'll need to unarchive them first — otherwise you won't
+> be able to import them.
 
-1. You'll import the project from claude.ai into a new Cowork project
-   on this account. In Cowork: **New project → Import project →
-   select the project from your chat list**. Cowork creates a local
-   folder for it.
-2. Say **"ready"** once the import is done — or say **"skip"** to
-   route the project's conversations to the catch-all without
-   importing (good for projects you already know you don't want to
-   migrate), or **"quit"** to stop the migration entirely.
-3. If you said **"ready"**, I'll ask **pick**, **skip**, or **quit**
-   again:
-   - **pick** — I'll have you select the newly-imported folder and
-     reconstruct the project's conversation history into it. If you
-     point me at an existing folder you've been working in instead,
-     I'll leave it alone and route conversations to **<catchall_name>**.
-   - **skip** — I won't reconstruct the project. Its conversations
-     still go to **<catchall_name>** for manual review.
-   - **quit** — stop the migration entirely. The tracker stays on
-     disk so you can resume later.
+> Now I'll walk through your <N_projects> projects in alphabetical order.
+> For each one we'll do the same thing:
 
---- Project 1 of <N_projects> ---
+> 1. You'll import the project from claude.ai into a new Cowork project
+>    on this account. In Cowork: **New project → Import project →
+>    select the project from your chat list**. Cowork creates a local
+>    folder for it.
+> 2. Say **ready** once the import is done — or say **skip** to
+>    route the project's conversations to the catch-all without
+>    importing (good for projects you already know you don't want to
+>    migrate), or **quit** to stop the migration entirely.
+> 3. If you said **ready**, I'll ask pick, skip, or quit
+>    again:
+>    - pick — I'll have you select the newly-imported folder and
+>      reconstruct the project's conversation history into it. If you
+>      point me at an existing folder you've been working in instead,
+>      I'll leave it alone and route conversations to <catchall_name>.
+>    - skip — I won't reconstruct the project. Its conversations
+>      still go to <catchall_name> for manual review.
+>    - quit — stop the migration entirely. The tracker stays on
+>      disk so you can resume later.
 
-**<project_name>** — <N_convs> conversations, <N_docs> knowledge docs.
+> --- Project 1 of <N_projects> ---
 
-To include it: in Cowork, **New project → Import project → select
-"<project_name>"** from your chat list, then say **"ready"** here.
+> <project_name> — <N_convs> conversations, <N_docs> knowledge docs.
 
-Or say **"skip"** (route to catch-all without importing) or **"quit"**
-(stop the migration).
-```
+> To include it: in Cowork, **New project → Import project → select
+> "<project_name>" from your chat list, then say **ready** here.
+
+> Or say **skip** (route to catch-all without importing) or **quit**
+> (stop the migration).
+
 
 ### Prompt 4 decisions
 
@@ -342,9 +473,10 @@ Fires immediately after the user says "ready" following the import step
 in Prompt 4 or any Pattern 5–N prompt. Terse — the rules were already
 laid out in Prompt 4's intro.
 
-```
-To continue, do you want to **pick** or **skip** this project?
-```
+### ▶ Skill speaking ◀
+
+> To continue, do you want to pick or skip this project?
+
 
 ### Prompt 4.5 decisions
 
@@ -363,13 +495,14 @@ Fires when `request_cowork_directory` returns "Directory selection was
 cancelled by the user" after the user said "pick". Never silently
 fall through to skip — re-ask.
 
-```
-Picker was cancelled — that might've been a mistake.
+### ▶ Skill speaking ◀
 
-**pick** to re-open the folder picker, **skip** to route this project's
-conversations to **<catchall_name>**, or **quit** to stop the migration
-entirely.
-```
+> Picker was cancelled — that might've been a mistake.
+
+> pick to re-open the folder picker, skip to route this project's
+> conversations to <catchall_name>, or quit to stop the migration
+> entirely.
+
 
 ## Post-pick folder-picker bridge
 
@@ -379,9 +512,10 @@ mode, no path). Parallel to Prompt 3.5 for the catch-all. Folder access
 is always the picker — never guess a path, never ask the user to type
 one.
 
-```
-Bringing up the folder picker so you can select **<project_name>**'s folder.
-```
+### ▶ Skill speaking ◀
+
+> Bringing up the folder picker so you can select <project_name>'s folder.
+
 
 If the user said "skip", this bridge does NOT fire — skip goes straight
 to the post-pick confirmation line.
@@ -392,13 +526,14 @@ Brief — these likely scroll past as the next per-project prompt loads,
 so they're acknowledgment, not detail. One of three depending on what
 the user did:
 
-```
-**<project_name>** picked (empty folder). Project will be reconstructed.
+### ▶ Skill speaking ◀
 
-**<project_name>** picked (existing folder). Conversations will be stored in **<catchall_name>**.
+> <project_name> picked (empty folder). Project will be reconstructed.
 
-**<project_name>** project skipped. Its conversations will be stored in **<catchall_name>** for your final review.
-```
+> <project_name> picked (existing folder). Conversations will be stored in <catchall_name>.
+
+> <project_name> project skipped. Its conversations will be stored in <catchall_name> for your final review.
+
 
 Then the next per-project prompt fires immediately.
 
@@ -408,17 +543,18 @@ Same structure as Prompt 4's per-project block, minus the catch-all
 confirmation and the verbose walk-through-intro + rules. Each subsequent
 prompt is:
 
-```
---- Project N of <N_projects> ---
+### ▶ Skill speaking ◀
 
-**<project_name>** — <N_convs> conversations, <N_docs> knowledge docs.
+> --- Project N of <N_projects> ---
 
-To include it: in Cowork, **New project → Import project → select
-"<project_name>"** from your chat list, then say **"ready"** here.
+> <project_name> — <N_convs> conversations, <N_docs> knowledge docs.
 
-Or say **"skip"** (route to catch-all without importing) or **"quit"**
-(stop the migration).
-```
+> To include it: in Cowork, **New project → Import project → select
+> "<project_name>" from your chat list, then say **ready** here.
+
+> Or say **skip** (route to catch-all without importing) or **quit**
+> (stop the migration).
+
 
 User responses at this prompt:
 - **"ready"** → Prompt 4.5 fires
@@ -571,57 +707,127 @@ philosophy as Part 1 with two key differences:
    asks the user to pick folders in a loop until they cancel; on cancel
    it confirms whether they're done.
 
-## Part 2 Prompt 1 — opener
+## Part 2 Prompt 1 (recon variant) — opener
 
-Fires immediately after the Part 1 wrap and the Part 2 banner. Cowork's
-internal session storage is intentionally walled off to skills — Part 2
-does not capture conversation history, memory.md, or working-folder
-attachments. The opener sets that expectation up front.
+Used when the install recon completed successfully in Step 2.0
+(`recon_data` is populated). The skill already knows which Cowork
+projects you have, how many sessions each one had, and which working
+folders they pulled in. The opener lists them and asks for go-ahead.
 
-```
-Part 2 handles your existing Cowork projects on this machine — the
-ones you've been working in with Cowork on the desktop.
+### ▶ Skill speaking ◀
 
-Before we start, an important heads-up: Cowork's internal session
-storage is walled off to skills by design, so three things from each
-Cowork project **don't migrate** via this skill — you'll need to
-handle them manually:
+> Part 2 handles your existing Cowork projects on this machine. From
+> the install recon, here are the Cowork projects I can see (excluding
+> this migration hub itself):
 
-- **Working-folder attachments** (which other folders are linked to
-  each project). Open each Cowork project on your old account and note
-  these — you'll re-attach them on the new account.
-- **Cowork session history** (your past chats with Claude inside
-  Cowork on these projects). Capture anything important before
-  transitioning.
-- **Project memory** (`memory.md` if you've used Cowork sessions inside
-  the project). Same wall — also won't carry across.
+>   <for each in-scope project, oldest activity first>
+>   - <project name guess>
+>       <N> sessions, last active <YYYY-MM-DD>
+>       Working folder(s) attached: <first 1-2 folder paths, truncated
+>                                    in the middle if long>
+>   </for>
 
-What this skill *does* preserve: your working files stay exactly where
-they are, and I write a `_PROJECT_BRIEF.md` next to them describing
-what's there and what didn't migrate.
+> What I'll do for each one, going down the list:
 
-I can't discover your Cowork projects automatically, so I'll need you
-to hand each one over by picking its folder.
+>   1. Bring up the folder picker so you can select the project's
+>      working folder. I need access to write the transcripts and the
+>      blueprint into it.
+>   2. Pull each session's transcript directly from your local install
+>      and write them into <project>/conversation-history/.
+>   3. Ask you to paste a short prompt into a fresh Cowork conversation
+>      in that project on the old account so its project memory gets
+>      dumped (memory is per-project and I can't reach it from this
+>      session).
+>   4. Generate the project blueprint from everything that just landed.
 
-When you're ready, say **"continue"** and I'll bring up a folder
-picker. Pick the folder for one Cowork project at a time. When you've
-handed me all of them, cancel the picker and I'll confirm you're done.
+> When you're ready, say **continue** and we'll start with the first
+> project on the list. Say **skip** if you want to bypass Part 2
+> entirely (no Cowork projects to migrate, or you'd rather handle them
+> manually).
 
-If you don't have any Cowork projects you want to migrate, say
-**"skip"** and I'll go straight to the wrap-up.
+> continue or skip?
 
-**continue** or **skip**?
-```
+
+## Part 2 Prompt 1 (fallback variant) — opener
+
+Used only when the install recon was skipped or failed in Step 2.0
+(`recon_data` is `None`). This is the v1.4-era flow preserved verbatim
+for users without native-shell access. Cowork's internal session
+storage is walled off, so we can't discover projects automatically and
+the user hands each one over by picking its folder.
+
+### ▶ Skill speaking ◀
+
+> Part 2 handles your existing Cowork projects on this machine — the
+> ones you've been working in with Cowork on the desktop.
+
+> Before we start, an important heads-up: since you skipped the install
+> recon, three things per Cowork project will need a manual paste step
+> to migrate:
+
+> - Working-folder attachments (which other folders are linked to
+>   each project). Open each Cowork project on your old account and note
+>   these — you'll re-attach them on the new account.
+> - Cowork session history (your past chats with Claude inside
+>   Cowork on these projects). You'll paste a prompt in each project's
+>   source-account Cowork session to dump them.
+> - Project memory (`memory.md` if you've used Cowork sessions inside
+>   the project). Same pattern — paste a prompt in the project's source-
+>   account session.
+
+> What this skill *does* preserve regardless: your working files stay
+> exactly where they are, and I write a `_PROJECT_BRIEF.md` next to them
+> describing what's there.
+
+> I can't discover your Cowork projects automatically on this path, so
+> I'll need you to hand each one over by picking its folder.
+
+> When you're ready, say **continue** and I'll bring up a folder
+> picker. Pick the folder for one Cowork project at a time. When you've
+> handed me all of them, cancel the picker and I'll confirm you're done.
+
+> If you don't have any Cowork projects you want to migrate, say
+> **skip** and I'll go straight to the wrap-up.
+
+> continue or skip?
+
+
+## Part 2 — per-project header (recon variant)
+
+Fires once per in-scope project at the top of each iteration in the
+recon-driven path. Sets the user up to grant folder access for that
+specific project.
+
+### ▶ Skill speaking ◀
+
+> Project <N> of <N_total>: <project name guess>
+
+>   - <N_sessions> sessions
+>   - First active <YYYY-MM-DD>, last active <YYYY-MM-DD>
+>   - Working folder(s) seen attached to these sessions:
+>       <folder path 1>
+>       <folder path 2>
+>       …
+
+> I'll need access to this project's working folder to write the
+> transcripts and the blueprint into it. Bringing up the folder picker —
+> select the folder for <project name guess>.
+
+> If this project isn't one you want to migrate, say **skip** to move
+> to the next one. **quit** ends the skill cleanly (you can resume
+> later from the tracker).
+
 
 ## Part 2 Prompt 1.5 — folder picker bridge
 
 Fires after user says "continue" at Prompt 1, AND after the cancel-confirmation
 re-loops the picker. Same wording either way.
 
-```
-Bringing up the folder picker. Pick the folder for one of your Cowork
-projects.
-```
+### ▶ Skill speaking ◀
+
+> Bringing up the folder picker. Pick the folder for one of your Cowork
+> projects.
+
 
 ## Part 2 Prompt 2 — per-folder processing confirmation
 
@@ -630,17 +836,18 @@ reopens the picker. The simpler form reflects Part 2's degraded scope
 (working files preserved + brief written; nothing else migrates per the
 session-storage wall).
 
-```
-Got it: **<folder_name>**.
+### ▶ Skill speaking ◀
 
-I wrote `_PROJECT_BRIEF.md` next to your working files, plus
-`transition-data/migration-prompt.md` — a prompt for you to run in
-this project on your old-account Cowork before deletion (it produces
-the blueprint that becomes the bootstrap for your new-account version
-of this project). Your folder contents are untouched.
+> Got it: <folder_name>.
 
-Pick another Cowork project, or cancel when you're done.
-```
+> I wrote `_PROJECT_BRIEF.md` next to your working files, plus
+> `transition-data/migration-prompt.md` — a prompt for you to run in
+> this project on your old-account Cowork before deletion (it produces
+> the blueprint that becomes the bootstrap for your new-account version
+> of this project). Your folder contents are untouched.
+
+> Pick another Cowork project, or cancel when you're done.
+
 
 The brief carries the full "what doesn't migrate" caveats so they're
 preserved in writing alongside each project. The migration-prompt is
@@ -651,43 +858,45 @@ projects, since the skill itself can't reach the Cowork session data.
 
 Fires when the user cancels the picker mid-loop.
 
-```
-Picker was cancelled. Are you done picking Cowork projects?
+### ▶ Skill speaking ◀
 
-Say **"done"** to wrap up Part 2, **"continue"** to bring the picker
-back up, or **"quit"** to stop the migration entirely.
-```
+> Picker was cancelled. Are you done picking Cowork projects?
+
+> Say **done** to wrap up Part 2, **continue** to bring the picker
+> back up, or **quit** to stop the migration entirely.
+
 
 ## Part 2 wrap
 
 Fires after "done" at the cancel-confirmation, or after "skip" at
 Prompt 1.
 
-```
-▶ Part 2 complete ◀
+### ▶ Skill speaking ◀
 
-<N_cowork> Cowork projects handled. Each one has a `_PROJECT_BRIEF.md`
-next to its working files plus a `transition-data/migration-prompt.md`
-with the prompt to run in that project's old-account Cowork session.
-Your folders' existing contents are unchanged.
+> ▶ Part 2 complete ◀
 
-Reminder of what you'll need to do manually before deleting the old
-account:
+> <N_cowork> Cowork projects handled. Each one has a `_PROJECT_BRIEF.md`
+> next to its working files plus a `transition-data/migration-prompt.md`
+> with the prompt to run in that project's old-account Cowork session.
+> Your folders' existing contents are unchanged.
 
-- **Run each `transition-data/migration-prompt.md`** in the matching
-  Cowork project on the old account. Save the response as
-  `transition-data/project-blueprint.md`.
-- **Capture your global memory** — see the Track A wrap (coming up
-  next) for the prompt to run.
-- **Recover the binary files** flagged in
-  `<catchall_name>/_ARTIFACTS_TO_RECOVER.md`.
-- **Note each Cowork project's working-folder attachments** — Cowork's
-  internal storage doesn't migrate, so re-attach manually on the new
-  account.
+> Reminder of what you'll need to do manually before deleting the old
+> account:
 
-Each project's `_PROJECT_BRIEF.md` has a per-project version of these
-reminders.
-```
+> - Run each `transition-data/migration-prompt.md` in the matching
+>   Cowork project on the old account. Save the response as
+>   `transition-data/project-blueprint.md`.
+> - Capture your global memory — see the Track A wrap (coming up
+>   next) for the prompt to run.
+> - Recover the binary files flagged in
+>   `<catchall_name>/_ARTIFACTS_TO_RECOVER.md`.
+> - Note each Cowork project's working-folder attachments — Cowork's
+>   internal storage doesn't migrate, so re-attach manually on the new
+>   account.
+
+> Each project's `_PROJECT_BRIEF.md` has a per-project version of these
+> reminders.
+
 
 (If "skip" → the wrap omits the per-project summary and just says
 *"Part 2 skipped — no Cowork projects to migrate."*)
@@ -718,77 +927,84 @@ skill cannot extract installers automatically — the user has to source
 them from where they originally got them. One prompt-and-wait cycle so
 users can't skip past it accidentally.
 
-## Custom-skills opener
+## Custom-skills confirmation — auto-export complete
 
-```
-One more thing before we wrap up Track A — your custom Cowork skills.
+Fires after Step 3.5 sub-steps 1 + 2 have run (auto-packaged the migration
+skill + auto-exported any other installed custom skills).
 
-I've already saved a fresh copy of this migration skill into the
-`skills/` subfolder next to your tracker — so you'll have it on the
-new account without having to find the original installer.
+### ▶ Skill speaking ◀
 
-If you've installed OTHER custom skills or plugins on the old account
-beyond what came bundled with Cowork (the `anthropic-skills` plugin),
-you'll need their installer files to re-install on the new account.
-Cowork's installed-skills location on disk is generally walled off, so
-the easiest path is to gather their original installer files from
-where you got them.
+> Custom Cowork skills — handled automatically.
 
-To bring additional custom skills across:
+> I packaged this migration skill into the hub's `skills/` subfolder, then
+> repackaged every other custom skill installed on this account into the
+> same folder. The bundled `anthropic-skills` plugin members (docx, pdf,
+> pptx, schedule, etc.) are skipped — they re-install automatically with
+> Cowork on the new account.
 
-1. In another Cowork session on the old account, ask Claude:
-   *"list my installed skills"*. Note which are part of the default
-   `anthropic-skills` plugin (no action needed) versus custom ones you
-   imported yourself.
-2. For each custom skill: find its original installer (typically a
-   `.skill` file). Common locations: your `Downloads\` folder, a
-   source repo, or the marketplace / distribution you got it from.
-3. Drop each installer file into the `skills\` subfolder alongside the
-   migration skill I already put there.
+> What's in `skills/` now:
 
-Say **"ready"** once you've added them (or **"skip"** if you have no
-other custom skills to bring — the migration skill is already in
-place), or **"quit"** to stop the migration.
-```
+>   • `account-migration.skill` (<size>)
+>   • `<other-custom-skill>.skill` (<size>)
+>   • …
+
+> Say **done** to lock this in, **hold** if you want to add another
+> `.skill` file by hand (one I couldn't see — e.g., a skill you downloaded
+> but never installed), or **quit** to stop the migration.
+
+
+## Custom-skills add-by-hand soft re-ask
+
+Fires on `hold` at the auto-export confirmation. User wants to drop a
+`.skill` file into the hub's `skills/` folder that the auto-export missed.
+
+### ▶ Skill speaking ◀
+
+> Drop the additional `.skill` file(s) into `<HUB>/skills/` and say
+> **ready**. I'll re-scan and update the listing.
+
 
 ## Custom-skills confirmation — files found
 
 Fires after the user says "ready" and the skill detects one or more
 `.skill` (or `.zip`) files in the hub's `skills/` subfolder.
 
-```
-Got it. In `skills/` I see:
+### ▶ Skill speaking ◀
 
-  • <filename>.skill (<size>)
-  • …
+> Got it. In `skills/` I see:
 
-The Track B handoff will point at these so you can re-install them on
-the new account.
-```
+>   • <filename>.skill (<size>)
+>   • …
+
+> The Track B handoff will point at these so you can re-install them on
+> the new account.
+
 
 ## Custom-skills confirmation — empty folder or no folder
 
 Fires when the user says "ready" but the `skills/` subfolder is empty
 or doesn't exist. Soft re-ask, not an error.
 
-```
-I see `account-migration.skill` in `skills/` (I put that there) but no
-other custom skills yet — either you have no other custom skills to
-bring (in which case say **"skip"** and we'll move on with just the
-migration skill) or your copy hasn't landed yet (in which case drop
-them in and say **"ready"** again).
-```
+### ▶ Skill speaking ◀
+
+> I see `account-migration.skill` in `skills/` (I put that there) but no
+> other custom skills yet — either you have no other custom skills to
+> bring (in which case say **skip** and we'll move on with just the
+> migration skill) or your copy hasn't landed yet (in which case drop
+> them in and say **ready** again).
+
 
 ## Custom-skills confirmation — skip
 
 Fires after the user says "skip". One line; the next prompt fires
 immediately.
 
-```
-No other custom skills to migrate — moving on. (The migration skill
-itself is already saved in `skills/account-migration.skill` for the
-new-account install.)
-```
+### ▶ Skill speaking ◀
+
+> No other custom skills to migrate — moving on. (The migration skill
+> itself is already saved in `skills/account-migration.skill` for the
+> new-account install.)
+
 
 ### Custom-skills decisions
 
@@ -814,6 +1030,78 @@ new-account install.)
   stage — Cowork's install flow will validate at install time on the
   new account.
 
+
+## Scheduled-tasks capture
+
+Fires only in multi-project Track A (single-project skips). Captures
+the user's Cowork scheduled tasks (cron-style recurring prompts) into a
+self-contained export file at `<hub>/scheduled-tasks-export.md`.
+
+### Scheduled-tasks opener
+
+### ▶ Skill speaking ◀
+
+> One more thing before the end-of-Track-A wrap — your scheduled tasks.
+
+> Cowork's scheduled tasks (the cron-style recurring prompts you've set
+> up via the `schedule` skill) don't carry across accounts automatically.
+> I can list them and write a self-contained export file you can use to
+> recreate each one on the new account.
+
+> I'll list what's active, capture each task's cron expression and prompt
+> verbatim into `scheduled-tasks-export.md` at the hub root, and note any
+> tasks that depend on attached working folders or external Windows state
+> (those need a little extra setup on the new account).
+
+> No input needed — running now.
+
+
+### Scheduled-tasks confirmation — tasks exported
+
+Fires after the export file lands on disk. Keep this confirmation
+MINIMAL — the captured tasks now appear in the tracker's Scheduled
+Tasks section (rendered visibly in the HTML table) and Track B's
+Step 8.5 walks through recreation on the new account. The user does
+not need cron expressions, recreation instructions, or dependency
+notes surfaced in chat at end of Track A — that's noise. The export
+file and the tracker section have all of it.
+
+### ▶ Skill speaking ◀
+
+> Captured `<N>` scheduled task(s) to `scheduled-tasks-export.md`. See
+> the tracker's Scheduled Tasks section for the list; Track B Step 8.5
+> handles recreation on the new account.
+
+
+### Scheduled-tasks confirmation — zero tasks
+
+Fires when `mcp__scheduled-tasks__list_scheduled_tasks` returns nothing.
+
+### ▶ Skill speaking ◀
+
+> No scheduled tasks active on the old account. Nothing to export — moving on.
+
+
+### Scheduled-tasks decisions
+
+- **Multi-project only.** Single-project Track A skips this step. Scheduled
+  tasks are account-level resources, not project-scoped; capturing them
+  during a focused one-project transfer is out of scope.
+- **No user input mid-step.** The step lists tasks via the MCP tool, reads
+  each prompt's `SKILL.md` from disk, and writes the export file —
+  mechanical end-to-end. The user sees a single "captured N tasks" line
+  when it's done.
+- **Verbatim prompts.** Each task's prompt body is captured verbatim from
+  its `SKILL.md` — no editing, no summarizing, no analysis. Discipline
+  rule #10 applies (the export IS the archive; the description IS the
+  description).
+- **Dependency annotation, not deep analysis.** The export's "Dependencies"
+  bullet notes whether the prompt references mounted working folders or
+  external Windows state (a true/false-style flag plus the names of any
+  attached folders). It does NOT analyze what the task does or hypothesize
+  whether the dependencies will still exist on the new account — that's
+  the user's call when recreating.
+
 ---
 
 # Prompt N+1 — all-skip final-gate
@@ -824,18 +1112,19 @@ the conversation history (orphans + per-project subfolders), so nothing
 is lost — this is a "are you sure?" confirmation, not a "stop, you'll
 lose everything" alarm.
 
-```
-Walk-through done — and you skipped every project.
+### ▶ Skill speaking ◀
 
-**<catchall_name>** now contains all your conversation history (orphan
-chats + a per-project subfolder for each skipped project), but no
-project folders will be reconstructed on disk.
+> Walk-through done — and you skipped every project.
 
-That's a valid outcome if you only wanted to preserve the chat history
-for review. If it was intentional, say **"yes, finalize"** to wrap up
-Track A. If you'd like to revisit any project choices, just tell me
-which one.
-```
+> <catchall_name> now contains all your conversation history (orphan
+> chats + a per-project subfolder for each skipped project), but no
+> project folders will be reconstructed on disk.
+
+> That's a valid outcome if you only wanted to preserve the chat history
+> for review. If it was intentional, say "yes, finalize" to wrap up
+> Track A. If you'd like to revisit any project choices, just tell me
+> which one.
+
 
 ### Prompt N+1 decisions
 
@@ -858,48 +1147,107 @@ README + `memory-capture-prompt.md` to the hub, then displays this
 prompt. Explicit 4-step bootstrap so the user knows how to start
 Track B on the new account.
 
-```
-Track A complete!
+### ▶ Skill speaking ◀
 
-Cleaned up: removed the export zip, the saved Chats page, the parse
-artifacts, and the extracted transcripts from this folder. Your
-reconstructed projects, the catch-all folder, the tracker, and your
-`skills/` subfolder are all intact.
+> Track A complete!
 
-Next: Track B — bring everything into your new account.
+> Cleaned up: removed the export zip, the saved Chats page, the parse
+> artifacts, and the extracted transcripts from this folder. Your
+> reconstructed projects, the catch-all folder, the tracker, and your
+> `skills/` subfolder are all intact.
 
-To get started on the new account, you'll do four quick setup steps:
+> Next: Track B — bring everything into your new account.
 
-1. Make sure the migration hub folder is on the new-account machine
-   (same workstation, OneDrive/Dropbox/Drive sync, or copy it over).
-2. Install this skill on the new account: **Customize → + → Skills →
-   upload** `account-migration.skill` from this hub's `skills/`
-   subfolder.
-3. Import the migration hub itself as a Cowork project on the new
-   account using **New project → Choose existing folder**. Name it
-   the same as it was on this account.
-4. Open a conversation in that project, tell Claude *"continue the
-   migration from the old side"*, and pick **"new"** when asked.
+> To get started on the new account, you'll do four quick setup steps:
 
-After that the skill drives the rest — memory seeding, project
-relinks, binary recovery, validation, and cleanup.
+> 1. Make sure the migration hub folder is on the new-account machine
+>    (same workstation, cloud-sync, or copy it over — whichever way
+>    you transfer folders between machines).
+> 2. Install this skill on the new account: **Customize → + → Skills →
+>    upload** `account-migration.skill` from this hub's `skills/`
+>    subfolder.
+> 3. Import the migration hub itself as a Cowork project on the new
+>    account using New project → Choose existing folder. Name it
+>    the same as it was on this account.
+> 4. Open a conversation in that project, tell Claude *"continue the
+>    migration from the old side"*, and pick **new** when asked.
 
-One more thing to do **before** you start Track B (or before deleting
-this account, whichever comes first): capture your global memory. In
-**Claude Chat** (claude.ai in your browser, or the Chat surface in
-Claude Desktop — NOT Cowork), sign in to the OLD account, start a
-no-project conversation, and paste one of the prompts in
-`memory-capture-prompt.md` in this folder (the file walks you through
-choosing between the wholesale and corporate-carve-out variants).
-Save Claude's response as `memory-capture.md` in this same folder —
-Track B will pick it up during the memory seeding phase.
+> After that the skill drives the rest — memory seeding, project
+> relinks, binary recovery, validation, and cleanup.
 
-Full step-by-step is in **`README - Final Transition to New Account.md`**
-in this folder. The skill-assisted path is at the top; manual fallback
-instructions follow.
+> One more thing to do before you start Track B (or before deleting
+> this account, whichever comes first): capture your global memory. In
+> Claude Chat (claude.ai in your browser, or the Chat surface in
+> Claude Desktop — NOT Cowork), sign in to the OLD account, start a
+> no-project conversation, and paste one of the prompts in
+> `memory-capture-prompt.md` in this folder (the file walks you through
+> choosing between the wholesale and corporate-carve-out variants).
+> Save Claude's response as `memory-capture.md` in this same folder —
+> Track B will pick it up during the memory seeding phase.
 
-Run those four steps when you're ready and I'll see you on the other side.
-```
+> Full step-by-step is in `README - Final Transition to New Account.md`
+> in this folder. The skill-assisted path is at the top; manual fallback
+> instructions follow.
+
+> Run those four steps when you're ready and I'll see you on the other side.
+
+
+## Prompt N+2-single — Track A wrap (single-project mode)
+
+Fires at end of Track A when `migration_scope == "single"`. Replaces
+Prompt N+2 in single-project mode — no hub, no global memory capture,
+no per-project plurality.
+
+### ▶ Skill speaking ◀
+
+> Track A complete for <project name> — everything needed to bring
+> this project to the new account lives inside its working folder now.
+
+> What's in the project folder:
+
+>   - `conversation-history/`
+>       <N_transcripts> session transcripts (chronological) + `INDEX.md`
+>   - `transition-data/cowork-space-memory/`
+>       <N_memory> Cowork memory entries dumped from this project on the
+>       old account (or absent/empty if this project had no per-project
+>       memory to dump)
+>   - `transition-data/project-blueprint.md`
+>       The destination-side bootstrap — has a verbatim Section 7
+>       starting prompt that restores memory and loads project context
+>       on the new account in one paste.
+>   - `transition-data/skills/account-migration.skill`
+>       This skill, bundled so it travels with the project (install it
+>       on the new account before invoking).
+>   - `transition-data/tracker.html`
+>       Carries the migration state so when you invoke the skill on the
+>       new account, it auto-detects this is a single-project transfer
+>       and adapts the flow.
+>   - `transition-data/_RESUME_ON_NEW_ACCOUNT.md`
+>       Short instructions for the new-account side, in case you want
+>       to read ahead.
+>   - `_PROJECT_BRIEF.md`
+>       Provenance + a "Resuming on the new account" section.
+>   - Your working files at the root — untouched.
+
+> To bring <project name> to the new account:
+
+>   1. Make sure this folder is on the new-account machine (sync it, or
+>      copy it over).
+>   2. Install this skill on the new account if you haven't already:
+>      Customize → + → Skills → upload
+>      `transition-data/skills/account-migration.skill`.
+>   3. Create a new Cowork project on the new account using
+>      New project → Choose existing folder and select this same
+>      folder. Name it the same as it was on the old account.
+>   4. Open a conversation in that project, tell Claude
+>      *"finish migrating this project from the old side"*, and pick
+>      **new** when asked. The skill will detect this is a
+>      single-project migration and walk you through one short step
+>      (pasting Section 7 into a fresh chat). That's it.
+
+> See `transition-data/_RESUME_ON_NEW_ACCOUNT.md` for the same
+> instructions in writing if you want to reference them later.
+
 
 ### Prompt N+2 decisions
 
@@ -935,84 +1283,307 @@ Fires when the skill detects it's running inside a Cowork project whose
 working folder IS the migration hub (presence of `tracker.html`).
 Preceded by the Part 3 banner: `▶ Part 3: Setting Up Claude Cowork (New Account) ◀`.
 
-```
-Project migration — Track B (Relink)
+### ▶ Skill speaking ◀
 
-Track B picks up on the new account. I can see I'm running inside the
-migration hub project, which means I can read the tracker the old side
-left for me. The tracker tells me which projects you reconstructed,
-which ones you routed to the catch-all, your Cowork projects from the
-old account, and where the recovery checklist lives.
+> Project migration — Track B (Relink)
 
-The actual content — your project folders, the catch-all, the
-blueprints, the recovery checklist — is in sibling folders on this
-machine that aren't linked to me yet. As we walk through each project
-you'll create a new Cowork project pointing at its folder, and I'll
-ask for access at the moment I need to verify what's there.
+> Track B picks up on the new account. I can see I'm running inside the
+> migration hub project, which means I can read the tracker the old side
+> left for me. The tracker tells me which projects you reconstructed,
+> which ones you routed to the catch-all, your Cowork projects from the
+> old account, and where the recovery checklist lives.
 
-Here's the plan:
+> The actual content — your project folders, the catch-all, the
+> blueprints, the recovery checklist — is in sibling folders on this
+> machine that aren't linked to me yet. As we walk through each project
+> you'll create a new Cowork project pointing at its folder, and I'll
+> ask for access at the moment I need to verify what's there.
 
-1. Seed your global memory on this account from the snapshot the old
-   side produced.
-2. Set up the catch-all as a Cowork project here.
-3. Walk through each project from the old side. For each one, you'll
-   create a new Cowork project using "Choose existing folder" pointing
-   at its on-disk folder. I'll verify the blueprint and inventory the
-   contents, then walk you through pasting custom instructions and
-   bootstrapping a first conversation.
-4. Recover any binary files (.docx, .xlsx, etc.) that were referenced
-   in transcripts but couldn't be extracted from the export.
-5. Validate that everything carried across the way you expected, then
-   clean up the migration hub.
+> Here's the plan:
 
-Say **"ready"** to start, **"hold"** if you need a minute, or **"quit"**
-to stop the migration.
-```
+> 1. Seed your global memory on this account from the snapshot the old
+>    side produced.
+> 2. Set up the catch-all as a Cowork project here.
+> 3. Walk through each project from the old side. For each one, you'll
+>    create a new Cowork project using "Choose existing folder" pointing
+>    at its on-disk folder. I'll verify the blueprint and inventory the
+>    contents, then walk you through pasting custom instructions and
+>    bootstrapping a first conversation.
+> 4. Recover any binary files (.docx, .xlsx, etc.) that were referenced
+>    in transcripts but couldn't be extracted from the export.
+> 5. Validate that everything carried across the way you expected, then
+>    clean up the migration hub.
 
-## Prompt B-1b — Track B opener (no hub detected, picker needed)
+> Say **ready** to start, **hold** if you need a minute, or **quit**
+> to stop the migration.
 
-Fires when the skill is NOT running inside the migration hub project
-(invoked from a different Cowork project, or a no-project conversation).
-Preceded by the Part 3 banner.
 
-```
-Project migration — Track B (Relink)
+## Prompt B-1b — Track B opener (no source detected, picker needed)
 
-Track B picks up on the new account. The migration hub from the old
-side has the tracker I need to read — it tells me which projects you
-reconstructed, which ones you routed to the catch-all, your Cowork
-projects from the old account, and where the recovery checklist lives.
+Fires when the skill is NOT running inside a known migration source
+(no `tracker.html` at working-folder root, no `transition-data/tracker.html`
+inside the working folder — invoked from a fresh Cowork project, a
+different Cowork project, or a no-project conversation). Preceded by
+the Part 3 banner.
 
-I'm not currently running inside the hub project. Point me at the hub
-folder and I'll read the tracker from there. It's the folder that
-contains `tracker.html`, `README - Final Transition to New Account.md`,
-and a `skills/` subfolder.
+### ▶ Skill speaking ◀
 
-The actual content — your project folders, the catch-all, the
-blueprints, the recovery checklist — is in sibling folders on this
-machine that aren't linked to me yet. As we walk through each project
-you'll create a new Cowork project pointing at its folder, and I'll
-ask for access at the moment I need to verify what's there.
+> Project migration — Track B (Relink)
 
-Here's the plan once I have the hub:
+> Track B picks up on the new account. The source side left behind a
+> tracker file that tells me what was migrated and what's still needed.
 
-1. Seed your global memory on this account from the snapshot the old
-   side produced.
-2. Set up the catch-all as a Cowork project here.
-3. Walk through each project from the old side. For each one, you'll
-   create a new Cowork project using "Choose existing folder" pointing
-   at its on-disk folder. I'll verify the blueprint and inventory the
-   contents, then walk you through pasting custom instructions and
-   bootstrapping a first conversation.
-4. Recover any binary files (.docx, .xlsx, etc.) that were referenced
-   in transcripts but couldn't be extracted from the export.
-5. Validate that everything carried across the way you expected, then
-   clean up the migration hub.
+> I'm not currently running inside the migration source. Point me at the
+> right folder and I'll read it from there. Two shapes are possible
+> depending on what you did on the old side:
 
-Say **"ready"** when you're ready and I'll bring up a folder picker
-for the hub. Say **"hold"** if you don't have the hub on this machine
-yet, or **"quit"** to stop the migration.
-```
+>   - Whole-account migration → point me at the hub folder (the
+>     one that contains `tracker.html`, `README - Final Transition to
+>     New Account.md`, and a `skills/` subfolder).
+
+>   - Single-project transfer → point me at the **project folder
+>     itself** (the one whose `transition-data/` subfolder contains
+>     `tracker.html` and `project-blueprint.md`).
+
+> I'll detect which one based on what's in the folder you pick and
+> adapt the rest of the flow accordingly.
+
+> Say **ready** when you're ready and I'll bring up the folder picker.
+> Say **hold** if you don't have the source on this machine yet, or
+> **quit** to stop the migration.
+
+
+## Prompt B-1c — Track B opener (single-project source detected)
+
+Fires when the skill detects `transition-data/tracker.html` in the
+current working folder — the user is invoking Track B from inside the
+migrated project itself. Preceded by the Part 3 banner.
+
+### ▶ Skill speaking ◀
+
+> Project migration — Track B (Relink)
+
+> I can see I'm running inside a single-project migration — your
+> `transition-data/` folder has the tracker and blueprint the old side
+> left behind. There's no hub to fetch, no other projects to walk
+> through, no catch-all to set up. Just one project to bring online here.
+
+> What's about to happen:
+
+>   1. I'll verify the migration package is intact (blueprint, dumped
+>      transcripts, dumped Cowork memory if any, the working files).
+>   2. I'll surface what's about to land in this Cowork project's
+>      memory and conversation context.
+>   3. If the source project had Custom Instructions set, I'll show
+>      you the text to paste into the new project's *Custom Instructions*
+>      field. (If the source had none, we skip this step.)
+>   4. You'll start a fresh chat in the project and paste a short
+>      bootstrap prompt I'll show you. That triggers the per-project
+>      memory restore (if memory was dumped) and loads the project's
+>      full context.
+>   5. You're done. The `transition-data/` folder is safe to delete
+>      once you've verified the restore.
+
+> Say **ready** to start, or **quit** to stop.
+
+
+## Prompt B-1c-inventory — single-project inventory display
+
+Fires after "ready" at B-1c. Reports what was found in `transition-data/`.
+
+### ▶ Skill speaking ◀
+
+> Inventory for <project name>:
+
+>   - <N_transcripts> session transcripts in `conversation-history/`
+>   - <N_memory> Cowork memory entries in
+>     `transition-data/cowork-space-memory/`
+>     <if 0: bullet reads "No per-project Cowork memory was dumped
+>     on the source side (either there was none, or the dump produced
+>     no entries) — nothing to restore here.">
+>   - <N_working_files> working files at the project root
+>     (see `_PROJECT_BRIEF.md` for the list)
+>   - The migration skill is bundled in `transition-data/skills/` so
+>     you can install it on this account if you haven't already.
+
+> Everything looks ready. Next I'll walk you through the two action steps —
+> Custom Instructions first (if applicable), then the bootstrap prompt.
+
+
+## Prompt B-1c-customs-present — Custom Instructions paste walkthrough (Section 2 non-empty)
+
+**Step 1 of 2 in the B-1c bootstrap flow.** Fires after the inventory
+display when the blueprint's Section 2 contains a non-empty fenced block.
+The skill reads `transition-data/project-blueprint.md`, extracts the
+fenced block inside Section 2, and surfaces it for the user to copy into
+the destination project's *Custom Instructions* field.
+
+**Inline vs. file-pointer rule.** If the fenced block is ≤30 lines, the
+skill inlines the text in the blockquote below. If longer, the skill
+points at the blueprint file and surfaces it via
+`mcp__cowork__present_files` so the user can open it in the right-side
+pane and copy from there.
+
+### ▶ Skill speaking ◀
+
+> Step 1 of 2 — **Custom Instructions.** The source project had Custom
+> Instructions set. Paste the following text verbatim into the new
+> project's *Custom Instructions* field (in *Cowork sidebar → this
+> project → Settings → Custom Instructions*). No commentary, no quotation
+> marks — just the text between the fence lines.
+
+> <if fenced block ≤30 lines, inline it below:>
+
+> ```
+> <Section 2 fenced-block content>
+> ```
+
+> <if fenced block >30 lines:>
+
+> The fenced block is on the long side, so I've surfaced
+> `transition-data/project-blueprint.md` in the right-side pane — open
+> it, scroll to Section 2, and copy the fenced block from there.
+
+> Come back here when you've pasted it and say **done**. Or **skip** to
+> leave Custom Instructions empty on the new project (you can always
+> paste them later), or **quit**.
+
+
+## Prompt B-1c-customs-empty — Custom Instructions skip (Section 2 empty)
+
+**Step 1 of 2 in the B-1c bootstrap flow (skip variant).** Fires after
+the inventory display when the blueprint's Section 2 has the
+empty-placeholder string (source had no Custom Instructions). Auto-advances
+to Step 2 per Discipline rule #9 — no input required.
+
+### ▶ Skill speaking ◀
+
+> Step 1 of 2 — **Custom Instructions.** The source project had no Custom
+> Instructions set; nothing to paste into the new project's settings.
+> Advancing to the bootstrap prompt.
+
+
+## Prompt B-1c-bootstrap — single-project bootstrap prompt (Step 2 of 2)
+
+**Step 2 of 2 in the B-1c bootstrap flow.** Fires after the Custom
+Instructions step (B-1c-customs-present `done`/`skip` or
+B-1c-customs-empty auto-advance). The skill displays a short outer
+pastable prompt that tells the destination-side Claude to read the
+blueprint and treat its Section 7 as the first directive. Section 7
+itself (in the blueprint on disk) carries the memory-restore preamble
+(for Part 2 projects) plus the project-specific numbered work directives.
+
+**Which variant to display** depends on whether the skill is currently
+running inside a Cowork project whose working folder IS the migrated
+project's folder:
+
+- If the working folder matches the picked folder (skill was invoked
+  from inside the destination project) → **B-1c-bootstrap-in-place**.
+- If the working folder is something else (skill was invoked from
+  another project or no-project; user pointed at the destination via
+  the picker) → **B-1c-bootstrap-relocated**.
+
+### B-1c-bootstrap-in-place
+
+Used when the skill is running *inside the destination Cowork project*.
+
+### ▶ Skill speaking ◀
+
+> Step 2 of 2 — **bootstrap prompt.** To finish restoring `<project name>`,
+> paste the prompt below as the first message in a *fresh chat in this same
+> Cowork project*. (Open a new chat from the *Cowork sidebar* — don't paste
+> it here; this conversation already has its own context and won't bootstrap
+> cleanly mid-stream.)
+
+> The prompt — copy verbatim:
+
+> ────────────────────────────────────────
+
+> This is a project I'm migrating from my old Claude account. Read
+> `transition-data/project-blueprint.md` for the full project context,
+> then treat its Section 7 — Recommended Starting Prompt — as your
+> first directive.
+
+> ────────────────────────────────────────
+
+> What happens when you paste it: Claude reads the entire blueprint —
+> including its "How to use this file" header that explains the bipartite
+> layout — then follows Section 7 as its first directive. Section 7
+> restores any dumped Cowork memory (if this project had memory on the
+> source side), registers the conversation archive as on-demand reference,
+> and walks Claude through the project-tailored reading list.
+
+> Come back here when you've done it and say **done**. Or **skip** if you'd
+> rather handle the paste later (the blueprint stays in place), or
+> **quit**.
+
+
+### B-1c-bootstrap-relocated
+
+Used when the user invoked the skill from a Cowork project whose working
+folder is NOT the migrated project's folder (the destination folder came
+in via the picker).
+
+### ▶ Skill speaking ◀
+
+> Step 2 of 2 — **bootstrap prompt.** To finish restoring `<project name>`,
+> you need a Cowork project on this account whose working folder IS the
+> migrated project's folder. The skill found the migration data via the
+> picker, but you're currently running in a different project — the
+> bootstrap has to land in the right one.
+
+> Set up the destination project if you haven't already:
+
+>   1. In the *Cowork sidebar*: *New project → Choose existing folder*
+>      → pick `<project folder path>`.
+>   2. Open a fresh chat inside that new project.
+>   3. Paste the prompt below as the first message.
+
+> (If you already have a Cowork project pointed at that folder, just
+> step 2 + 3.)
+
+> The prompt — copy verbatim:
+
+> ────────────────────────────────────────
+
+> This is a project I'm migrating from my old Claude account. Read
+> `transition-data/project-blueprint.md` for the full project context,
+> then treat its Section 7 — Recommended Starting Prompt — as your
+> first directive.
+
+> ────────────────────────────────────────
+
+> What happens when Claude reads it: it reads the entire blueprint —
+> including the "How to use this file" header that explains the bipartite
+> layout — then follows Section 7 as its first directive. Section 7
+> restores any dumped Cowork memory (if this project had memory on the
+> source side), registers the conversation archive as on-demand reference,
+> and walks Claude through the project-tailored reading list.
+
+> Come back here when you've done it and say **done**. Or **skip** if you'd
+> rather handle the paste later, or **quit**.
+
+
+## Prompt B-1c-wrap — single-project Track B wrap
+
+Fires after "done" or "skip" at B-1c-bootstrap.
+
+### ▶ Skill speaking ◀
+
+> Single-project restore complete.
+
+> This project — <project name> — is now live on the new account.
+> Both `transition-data/` and `_PROJECT_BRIEF.md` at the project root are
+> migration scaffolding only — once you've verified the project looks
+> right, you can delete them. (Keep them around as a migration record if
+> you prefer; nothing depends on either after this point.) Your project's
+> own working files, the `conversation-history/` archive, and the
+> restored per-project memory are what's load-bearing going forward.
+
+> If you have more projects to migrate, run the skill again on the
+> source account for each one, then point me at each project folder
+> on this side as you bring it across.
+
 
 ### Prompt B-1 decisions (both variants)
 
@@ -1035,15 +1606,17 @@ yet, or **"quit"** to stop the migration.
   from skip, which means "do nothing for this item and proceed"). Quit
   ends the skill cleanly; tracker stays on disk for resume.
 
-## Prompt B-2 — hub picker bridge
+## Prompt B-2 — picker bridge (multi-project hub or single-project folder)
 
 Fires only on the B-1b path, after user says "ready". Skipped on the
-B-1a path.
+B-1a / B-1c paths.
 
-```
-Got it. Bringing up the folder picker now so you can select the
-migration hub folder.
-```
+### ▶ Skill speaking ◀
+
+> Got it. Bringing up the folder picker now. Pick whichever folder
+> you have — a multi-project hub or a single project's folder. I'll
+> detect which one and adapt from there.
+
 
 ## Prompt B-3 — silent tracker parse + validation
 
@@ -1053,55 +1626,130 @@ Failure branches below.
 
 ### Prompt B-3b — partial corruption (JSON unparseable, HTML table readable)
 
-```
-The tracker's JSON state block is unreadable, but I can see the
-rendered table inside the file. I'll work from that — counts and
-dispositions are fine, but I won't have exact folder paths to pre-fill,
-so you'll be navigating the folder picker by name for each project.
+### ▶ Skill speaking ◀
 
-Continuing.
-```
+> The tracker's JSON state block is unreadable, but I can see the
+> rendered table inside the file. I'll work from that — counts and
+> dispositions are fine, but I won't have exact folder paths to pre-fill,
+> so you'll be navigating the folder picker by name for each project.
+
+> Continuing.
+
 
 ### Prompt B-3c — disaster (no JSON, no usable HTML table)
 
-```
-I couldn't read the tracker file usefully. The handoff state and the
-rendered table are both unrecoverable, and without the tracker I don't
-have a list of what projects to walk through or where their folders
-live.
+### ▶ Skill speaking ◀
 
-Options:
+> I couldn't read the tracker file usefully. The handoff state and the
+> rendered table are both unrecoverable, and without the tracker I don't
+> have a list of what projects to walk through or where their folders
+> live.
 
-- Say **"pick"** to point me at a different folder. The hub may have
-  been copied somewhere else, and the one I just looked at is the
-  damaged copy.
-- Say **"quit"** to stop. Open the `README - Final Transition to New
-  Account.md` in the hub folder and follow it manually — it has the
-  same steps as this walk-through, just non-interactive. You can also
-  try repairing the tracker (open it in a text editor, or restore from
-  the Cowork sidebar artifact on the old account if you still have
-  access) and re-run Track B once it's parseable.
-```
+> Options:
+
+> - Say **pick** to point me at a different folder. The hub may have
+>   been copied somewhere else, and the one I just looked at is the
+>   damaged copy.
+> - Say **quit** to stop. Open the `README - Final Transition to New
+>   Account.md` in the hub folder and follow it manually — it has the
+>   same steps as this walk-through, just non-interactive. You can also
+>   try repairing the tracker (open it in a text editor, or restore from
+>   the Cowork sidebar artifact on the old account if you still have
+>   access) and re-run Track B once it's parseable.
+
 
 ## Prompt B-4 — hub inventory display
 
 Mirror of Track A's Prompt 2.5. Plain `- ✓` checkmarks. Conditional
 rendering: drop any bullet whose count is 0.
 
-```
-Got it. From the tracker:
+### ▶ Skill speaking ◀
 
-- ✓ **<N_part1_reconstructed>** reconstructed projects from your old web/chat side.
-- ✓ **<N_part2_cowork>** Cowork projects from the old account.
-- ✓ The catch-all: **<catchall_name>** with **<N_orphans>** orphan
-   conversations and **<N_part1_catchall>** archived per-project subfolders.
-- ✓ **<N_recover>** binary files to recover from claude.ai before
-   old-account deletion.
-- ✓ **<N_custom_skills>** custom skills to install on this account.
+> Got it. From the tracker:
 
-Five things to do: seed your global memory, set up the catch-all,
-walk through each project, recover the binaries, and validate.
-```
+> - ✓ <N_part1_reconstructed> reconstructed projects from your old web/chat side.
+> - ✓ <N_part2_cowork> Cowork projects from the old account.
+> - ✓ The catch-all: <catchall_name> with <N_orphans> orphan
+>    conversations and <N_part1_catchall> archived per-project subfolders.
+> - ✓ <N_scheduled_tasks> scheduled task(s) captured at source.
+> - ✓ <N_custom_skills> custom skill(s) to install on this account.
+> - ✓ <N_recover> binary file(s) to recover from claude.ai before
+>    old-account deletion.
+
+> The flow: seed your global memory, validate the seed, set up the
+> catch-all, walk through each project, recreate scheduled tasks,
+> install custom skills, recover binaries, and clean up. I'll drive
+> each step in order — you decide per item.
+
+
+---
+
+## Track B scope (between B-4 inventory and B-MS-1 memory seed)
+
+Mirror of Track A's Step 1.5 scope gate. Lets the user restore just one
+project from the tracker instead of walking the entire list.
+
+### track-b-scope-selection
+
+Fires after the B-4 inventory display.
+
+### ▶ Skill speaking ◀
+
+> Before we start working through the list — restoring everything from
+> the tracker, or just one specific project this run?
+
+>   - **all**   — every project in the tracker that's still pending.
+>   - **one**   — a single named project. Everything else stays pending,
+>               ready for a future run.
+>   - **quit**  — close the skill (tracker stays on disk).
+
+> Most people pick **all** the first time the new account is set up, and
+> **one** for follow-up runs (re-doing a project after a fix, or
+> adding a project that wasn't ready during the initial pass).
+
+
+### track-b-single-project-name
+
+Fires only if the user picks "one" at the scope-selection prompt.
+
+### ▶ Skill speaking ◀
+
+> Which project? Type the name as it appears in the tracker (case
+> doesn't matter; I'll match by substring). The tracker has:
+
+>   <enumerate projects[].name and cowork_projects[].name from the
+>    tracker, in the same order the tracker shows them, with a leading
+>    tag for which side: [Part 1] or [Part 2]>
+
+> If I can't find a match I'll list these again so you can spot a
+> typo. Otherwise we'll jump straight to that project's relink.
+
+
+### track-b-single-project-no-match
+
+Fires only if `restore_target` matched zero entries.
+
+### ▶ Skill speaking ◀
+
+> I couldn't find a project matching "<restore_target>". The tracker
+> contains:
+
+>   Part 1 (reconstructed from web/chat):
+>     - <name 1>  (status: <relinked>)
+>     - <name 2>  (status: <relinked>)
+>     - …
+
+>   Part 2 (Cowork from old account):
+>     - <name 1>  (status: <relinked>)
+>     - <name 2>  (status: <relinked>)
+>     - …
+
+> Three options:
+
+>   - **pick** + a name from the lists above — I'll re-scope to that one.
+>   - **retry** — type a different name from scratch.
+>   - **quit** — close the skill.
+
 
 ---
 
@@ -1114,55 +1762,79 @@ context automatically.
 
 ### Prompt B-MS-1 — memory seed opener
 
-```
-First step: seed your global memory.
+### ▶ Skill speaking ◀
 
-The old account produced `memory-capture.md` — a snapshot of
-everything Claude knew about you globally on that account: your role,
-work context, communication preferences, recurring patterns, and so
-on. On this account Claude doesn't know any of that yet, so we'll
-load it now before anything else.
+> First step: seed your global memory.
 
-Heads up: account-level memory is read and written through **Claude
-Chat** (claude.ai in a browser, or the Chat surface in Claude
-Desktop), not in Cowork. So you'll do this part there — not in this
-Cowork conversation — then come back here to continue.
+> The old account produced `memory-capture.md` — a snapshot of
+> everything Claude knew about you globally on that account: your role,
+> work context, communication preferences, recurring patterns, and so
+> on. On this account Claude doesn't know any of that yet, so we'll
+> load it now before anything else.
 
-To seed it:
+> Heads up: account-level memory is read and written through **Claude
+> Chat** (claude.ai in a browser, or the Chat surface in Claude
+> Desktop), not in Cowork. So you'll do this part there — not in this
+> Cowork conversation — then come back here to continue.
 
-1. Open **Claude Chat** (claude.ai in a browser, or the Chat surface
-   in Claude Desktop — NOT Cowork). Sign in to your NEW account.
-2. Start a new conversation — **no project selected** (just a fresh
-   chat).
-3. Attach `memory-capture.md` from the migration hub folder to the
-   conversation.
-4. Paste this prompt:
-   *"I'm migrating from a previous Claude account. The attached
-   `memory-capture.md` is a snapshot of everything you knew about me
-   there — my role, work context, communication preferences,
-   technical domains, recurring workflows, and other persistent
-   context. Please review it and commit the relevant facts to your
-   memory of me on this account. Be thorough."*
-5. Wait for Claude to confirm what's been saved.
+> To seed it:
 
-Come back here (Cowork) and say **"done"** when finished. Or
-**"skip"** if you didn't capture memory on the old side (or don't
-want global memory seeded), or **"quit"** to stop the migration.
-```
+> 1. Open Claude Chat (claude.ai in a browser, or the Chat surface
+>    in Claude Desktop — NOT Cowork). Sign in to your NEW account.
+> 2. Start a new conversation — no project selected (just a fresh
+>    chat).
+> 3. Attach `memory-capture.md` from the migration hub folder to the
+>    conversation.
+> 4. Paste this prompt:
+>    *"I'm migrating from a previous Claude account. The attached
+>    `memory-capture.md` is a snapshot of everything you knew about me
+>    there — my role, work context, communication preferences,
+>    technical domains, recurring workflows, and other persistent
+>    context. Please review it and commit the relevant facts to your
+>    memory of me on this account. Be thorough."*
+> 5. Wait for Claude to confirm what's been saved.
+
+> Come back here (Cowork) and say **done** when finished. Or
+> **skip** if you didn't capture memory on the old side (or don't
+> want global memory seeded), or **quit** to stop the migration.
+
+
+### Prompt B-MS-1-single — memory seed opener (single-project mode)
+
+Variant of **B-MS-1** used when `restore_scope == "single"` (Step 5.5).
+Account-level memory is account-wide and likely already seeded from a
+prior run; this short prompt confirms before redoing it.
+
+### ▶ Skill speaking ◀
+
+> Memory seed step. Since you're restoring just one project this run,
+> your account-level memory may already be in place from an earlier
+> restore.
+
+>   - **skip**   — global memory is already seeded, jump straight to the
+>                project relink. (Common choice in single-project mode.)
+>   - **ready**  — fresh account, seed global memory first. I'll walk you
+>                through it (same Claude-Chat-side steps as a full
+>                restore — attach memory-capture.md, paste the prompt,
+>                come back when Claude confirms).
+>   - **quit**   — stop the migration.
+
 
 ### Prompt B-MS-2 — memory seed done confirmation
 
-```
-Memory seeded. Claude on this account now has your global context for
-the per-project setup that follows.
-```
+### ▶ Skill speaking ◀
+
+> Memory seeded. Claude on this account now has your global context for
+> the per-project setup that follows.
+
 
 ### Prompt B-MS-3 — memory seed skip confirmation
 
-```
-Memory seeding skipped — Claude on this account will pick up your
-context conversation by conversation as you work.
-```
+### ▶ Skill speaking ◀
+
+> Memory seeding skipped — Claude on this account will pick up your
+> context conversation by conversation as you work.
+
 
 ### Memory seed decisions
 
@@ -1186,39 +1858,42 @@ per-project subfolders).
 
 ### Prompt B-5 — catch-all setup
 
-```
-Next: set up the catch-all on this account.
+### ▶ Skill speaking ◀
 
-The catch-all on disk is at:
-**<catchall_folder_path>**
+> Next: set up the catch-all on this account.
 
-In Cowork:
-1. Start a new project → **Choose existing folder**.
-2. Navigate to the path above and select it.
-3. Name it **<catchall_name>** — same as on the old side, so the
-   per-project routing language in the walk-through stays consistent.
-4. Come back here.
+> The catch-all on disk is at:
+> <catchall_folder_path>
 
-Say **"ready"** when the project is created. I'll bring up a folder
-picker so I can access it and confirm the orphans + per-project
-subfolders are intact.
-```
+> In Cowork:
+> 1. Start a new project → Choose existing folder.
+> 2. Navigate to the path above and select it.
+> 3. Name it <catchall_name> — same as on the old side, so the
+>    per-project routing language in the walk-through stays consistent.
+> 4. Come back here.
+
+> Say **ready** when the project is created. I'll bring up a folder
+> picker so I can access it and confirm the orphans + per-project
+> subfolders are intact.
+
 
 ### Prompt B-5.5 — catch-all picker bridge
 
-```
-Got it. Bringing up the folder picker now so I can access
-**<catchall_name>**'s folder.
-```
+### ▶ Skill speaking ◀
+
+> Got it. Bringing up the folder picker now so I can access
+> <catchall_name>'s folder.
+
 
 ### Prompt B-5.6 — catch-all post-pick confirmation
 
-```
-Catch-all confirmed: **<N_orphans>** orphan conversations and
-**<N_part1_catchall>** per-project subfolders, all present. You'll
-review the contents on the new account inside **<catchall_name>** once
-the walk-through is done.
-```
+### ▶ Skill speaking ◀
+
+> Catch-all confirmed: <N_orphans> orphan conversations and
+> <N_part1_catchall> per-project subfolders, all present. You'll
+> review the contents on the new account inside <catchall_name> once
+> the walk-through is done.
+
 
 ---
 
@@ -1230,80 +1905,84 @@ inside the catch-all (set up in B-5), not walked individually.
 
 ### Prompt B-6 — walk-through verbose intro
 
-```
-Now I'll walk through your **<N_walkthrough>** projects in order —
-**<N_part1_reconstructed>** reconstructed from your web/chat side, plus
-**<N_part2_cowork>** Cowork projects from the old account. For each one
-we'll do the same thing:
+### ▶ Skill speaking ◀
 
-1. You'll create a new Cowork project on this account using **New
-   project → Choose existing folder**, then select the project's
-   on-disk folder. The folders are already where the old-side skill
-   left them — same paths if both accounts run on this machine, or
-   wherever you copied them to.
-2. Say **"ready"** once the project is created — or **"skip"** to
-   defer this project (you can come back to it later, the on-disk
-   folder isn't touched), or **"quit"** to stop the migration.
-3. After "ready" I'll bring up a folder picker so I can access the
-   project's folder, verify the blueprint is there, and give you the
-   short checklist for finishing the setup (paste custom instructions,
-   bootstrap a first conversation).
+> Now I'll walk through your <N_walkthrough> projects in order —
+> <N_part1_reconstructed> reconstructed from your web/chat side, plus
+> <N_part2_cowork> Cowork projects from the old account. For each one
+> we'll do the same thing:
 
-The **<N_part1_catchall>** projects you routed to the catch-all on the
-old side aren't in this walk-through — they live as subfolders inside
-**<catchall_name>** for you to review there. I'll remind you when we
-wrap.
-```
+> 1. You'll create a new Cowork project on this account using **New
+>    project → Choose existing folder**, then select the project's
+>    on-disk folder. The folders are already where the old-side skill
+>    left them — same paths if both accounts run on this machine, or
+>    wherever you copied them to.
+> 2. Say **ready** once the project is created — or **skip** to
+>    defer this project (you can come back to it later, the on-disk
+>    folder isn't touched), or **quit** to stop the migration.
+> 3. After **ready** I'll bring up a folder picker so I can access the
+>    project's folder, verify the blueprint is there, and give you the
+>    short checklist for finishing the setup (paste custom instructions,
+>    bootstrap a first conversation).
+
+> The <N_part1_catchall> projects you routed to the catch-all on the
+> old side aren't in this walk-through — they live as subfolders inside
+> <catchall_name> for you to review there. I'll remind you when we
+> wrap.
+
 
 ### Pattern — per-project prompts B-7 through B-N
 
-```
---- Project N of <N_walkthrough> ---
+### ▶ Skill speaking ◀
 
-**<project_name>** — <source_kind>
-**<N_convs>** conversations · **<N_docs>** knowledge docs
-Folder: `<folder_path>`
+> --- Project N of <N_walkthrough> ---
 
-In Cowork: **New project → Choose existing folder**, select the folder
-above, then say **"ready"** here.
+> <project_name> — <source_kind>
+> <N_convs> conversations · <N_docs> knowledge docs
+> Folder: `<folder_path>`
 
-Or **"skip"** (defer this project) or **"quit"** (stop the migration).
-```
+> In Cowork: New project → Choose existing folder, select the folder
+> above, then say **ready** here.
+
+> Or **skip** (defer this project) or **quit** (stop the migration).
+
 
 `<source_kind>` values: `reconstructed from web/chat` (Part 1 empty pick) or `Cowork from old account` (Part 2).
 
 ### Per-project picker bridge (after "ready")
 
-```
-Got it. Bringing up the folder picker so I can access
-**<project_name>**'s folder.
-```
+### ▶ Skill speaking ◀
+
+> Got it. Bringing up the folder picker so I can access
+> <project_name>'s folder.
+
 
 ### Per-project post-pick — blueprint found (happy path)
 
-```
-Got it. **<project_name>** has its blueprint and knowledge
-files ready. Finish setting it up on this account:
+### ▶ Skill speaking ◀
 
-1. Open the new Cowork project you just created.
-2. Open `transition-data/project-blueprint.md`. Copy the **Custom
-   Instructions** section into the project's settings.
-3. Start a conversation in the project. Paste this prompt (it's
-   also saved in `_PROJECT_BRIEF.md`'s "Resuming on the new account"
-   section if you'd rather grab it from there):
-   *"This is a project I'm migrating from my old Claude account.
-   Read `transition-data/project-blueprint.md` for full context, then
-   treat its **Recommended Starting Prompt** section as my first
-   directive — that's the project-tailored resumption point.
-   Knowledge files referenced in the blueprint are in `knowledge/`
-   (for reconstructed projects) or in this project's folder (for
-   Cowork projects)."*
+> Got it. <project_name> has its blueprint and knowledge
+> files ready. Finish setting it up on this account:
 
-Say **"done"** when finished to move to the next project. Or
-**"skip ahead"** to move on without finishing the bootstrap (you can
-come back to it later). I won't verify the steps above — I don't have
-access to inspect the new Cowork project's settings.
-```
+> 1. Open the new Cowork project you just created.
+> 2. Open `transition-data/project-blueprint.md`. Copy the **Custom
+>    Instructions** section into the project's settings.
+> 3. Start a conversation in the project. Paste this prompt (it's
+>    also saved in `_PROJECT_BRIEF.md`'s "Resuming on the new account"
+>    section if you'd rather grab it from there):
+>    *"This is a project I'm migrating from my old Claude account.
+>    Read `transition-data/project-blueprint.md` for full context, then
+>    treat its Recommended Starting Prompt section as my first
+>    directive — that's the project-tailored resumption point.
+>    Knowledge files referenced in the blueprint are in `knowledge/`
+>    (for reconstructed projects) or in this project's folder (for
+>    Cowork projects)."*
+
+> Say **done** when finished to move to the next project. Or
+> defer to move on without finishing the bootstrap (you can
+> come back to it later). I won't verify the steps above — I don't have
+> access to inspect the new Cowork project's settings.
+
 
 ### Per-project post-pick — blueprint missing (Part 2 only)
 
@@ -1311,45 +1990,48 @@ Fires when a Part 2 Cowork project's folder is picked but
 `transition-data/project-blueprint.md` isn't present. Means the user
 didn't run the migration-prompt on the old account before deletion.
 
-```
-**<project_name>**'s folder is accessible, but I don't see a
-`transition-data/project-blueprint.md`. That means the per-project
-migration prompt didn't get run on the old account before deletion.
+### ▶ Skill speaking ◀
 
-You can either:
+> <project_name>'s folder is accessible, but I don't see a
+> `transition-data/project-blueprint.md`. That means the per-project
+> migration prompt didn't get run on the old account before deletion.
 
-- Say **"continue"** to finish setting up the project anyway. You'll
-  paste the custom instructions and bootstrap by hand from whatever
-  you remember about the project. Knowledge files are still
-  accessible from the on-disk folder.
-- Say **"go back"** if you still have access to the old account and
-  can run the migration prompt now (in that Cowork project, paste the
-  contents of `transition-data/migration-prompt.md`, save the response
-  as `transition-data/project-blueprint.md`). Then come back here and
-  say "done".
-- Say **"skip"** to defer this project entirely.
-```
+> You can either:
+
+> - Say **continue** to finish setting up the project anyway. You'll
+>   paste the custom instructions and bootstrap by hand from whatever
+>   you remember about the project. Knowledge files are still
+>   accessible from the on-disk folder.
+> - Say back if you still have access to the old account and
+>   can run the migration prompt now (in that Cowork project, paste the
+>   contents of `transition-data/migration-prompt.md`, save the response
+>   as `transition-data/project-blueprint.md`). Then come back here and
+>   say **done**.
+> - Say **skip** to defer this project entirely.
+
 
 ### Per-project post-pick — folder wrong / unexpected structure
 
-```
-I can access the folder you picked, but it doesn't look like
-**<project_name>**'s folder — I expected to see <expected_marker>
-and instead I see <found_contents>.
+### ▶ Skill speaking ◀
 
-Maybe you picked the wrong folder? Say **"pick"** to try the folder
-picker again, **"skip"** to defer this project, or **"quit"** to stop.
-```
+> I can access the folder you picked, but it doesn't look like
+> <project_name>'s folder — I expected to see <expected_marker>
+> and instead I see <found_contents>.
+
+> Maybe you picked the wrong folder? Say **pick** to try the folder
+> picker again, **skip** to defer this project, or **quit** to stop.
+
 
 ### Per-project skip confirmation
 
 Fires when user said "skip" at the per-project prompt (no picker fires).
 
-```
-**<project_name>** deferred. You can come back to it later by
-re-running the skill and picking "new" — the tracker will still show
-this project as pending.
-```
+### ▶ Skill speaking ◀
+
+> <project_name> deferred. You can come back to it later by
+> re-running the skill and picking **new** — the tracker will still show
+> this project as pending.
+
 
 Then the next per-project prompt fires immediately.
 
@@ -1364,14 +2046,294 @@ Then the next per-project prompt fires immediately.
 - **Knowledge files surfaced in the bootstrap prompt**, not as a
   separate step. They're already accessible via filesystem when the
   user does "Choose existing folder" — no upload needed.
-- **`done` vs `skip ahead` after the happy-path checklist.** "done"
-  means "I finished the steps, next project please"; "skip ahead"
+- **`done` vs `defer` after the happy-path checklist.** "done"
+  means "I finished the steps, next project please"; defer
   means "I'll do the bootstrap later, move on now." Distinct meanings.
-- **`continue` / `go back` / `skip` in blueprint-missing branch.**
+- **`continue` / `back` / `skip` in blueprint-missing branch.**
   Three actions: proceed without blueprint, go back to old account
   and generate one, or skip this project.
 
 ---
+
+## Scheduled-tasks recreation (Track B Step 8.5, multi-project only)
+
+Fires after the per-project walk-through and before binary recovery.
+Mirrors Track A's Step 3.7 in reverse: Track A captured the user's
+scheduled tasks into `scheduled-tasks-export.md` at the hub root; Track B
+walks the user through recreating each one on the new account, calling
+`mcp__scheduled-tasks__create_scheduled_task` automatically when the user
+confirms.
+
+Skipped entirely in single-project Track B (B-1c branch) — Track A's
+Step 3.7 already skipped single-project, so the tracker's
+`scheduled_tasks` array is empty.
+
+### Prompt B-ST-zero — no scheduled tasks captured
+
+Fires when the tracker's `scheduled_tasks` array is empty or missing.
+One-liner, auto-advance per Discipline rule #9.
+
+### ▶ Skill speaking ◀
+
+> No scheduled tasks captured at source — moving on.
+
+
+### Prompt B-ST-1 — scheduled-tasks opener
+
+Fires when there's at least one captured scheduled task. Names the count
+and the count-with-external-dependencies subset before iterating.
+
+### ▶ Skill speaking ◀
+
+> Next: scheduled tasks. Track A captured `<N_total>` scheduled task(s)
+> from your old account into `scheduled-tasks-export.md`. I'll walk you
+> through them one at a time. For each, you decide **recreate** (I'll
+> create the task on this account right now, using the cron and prompt
+> from the export) or **skip** (leave it out — you can always add it
+> manually later).
+
+> <if any task has external dependencies>
+> Note: `<N_with_deps>` of these task(s) reference attached working
+> folders or external Windows state. I'll create the task spec; you'll
+> need to re-attach the referenced folders via *Cowork → each task's
+> settings* before they next fire. I'll remind you with a list at the
+> end.
+> </if>
+
+> Say **ready** to start the walk-through, **skip** to skip all
+> scheduled tasks (you can handle them manually from the export file
+> later), or **quit**.
+
+
+### Prompt B-ST-2 — per-task prompt
+
+Fires once per scheduled task in tracker order. Inline the verbatim
+prompt if ≤30 lines; if longer, inline the first 20 lines and point at
+the export file for the remainder. Use italics for *Cowork → task
+settings* locations, backticks for filenames.
+
+### ▶ Skill speaking ◀
+
+> **Scheduled task `<idx>` of `<N_total>` — `<taskId>`**
+
+>   - **Description:** `<description>`
+>   - **Cron:** `<cronExpression>` (`<schedule_human>`)
+>   - **Enabled at capture time:** `<yes/no>`
+>   <if has_dependencies>
+>   - **External dependencies:** this task references `<folder>`,
+>     `<folder>`, …. After I create the task you'll need to re-attach
+>     those folders via *Cowork → this task's settings*.
+>   </if>
+
+> **Prompt:**
+
+> ```
+> <verbatim prompt body, first 30 lines>
+> ```
+> <if longer than 30 lines>
+
+> (Full prompt continues in `scheduled-tasks-export.md` § `<idx>`.)
+> </if>
+
+> Say **recreate** and I'll create the task on this account, **skip**
+> to leave it out, or **quit** to stop the migration here.
+
+
+### Prompt B-ST-3 — per-task done confirmation
+
+Fires after a successful `mcp__scheduled-tasks__create_scheduled_task`
+call. Auto-advances to the next task.
+
+### ▶ Skill speaking ◀
+
+> Created `<taskId>` on this account (cron `<cronExpression>`).
+> <if has_dependencies>Remember to re-attach the referenced folders.</if>
+
+
+### Prompt B-ST-3-error — per-task error re-ask
+
+Fires when `mcp__scheduled-tasks__create_scheduled_task` returns an
+error (taskId already exists, schedule conflict, etc.).
+
+### ▶ Skill speaking ◀
+
+> Couldn't create `<taskId>`: `<error message from MCP tool>`.
+
+> Say **recreate-with-new-id** and I'll retry with `<taskId>-imported`,
+> **skip** to move on without recreating this task, or **quit**.
+
+
+### Prompt B-ST-4 — per-task skip confirmation
+
+Auto-advance to the next task.
+
+### ▶ Skill speaking ◀
+
+> Skipped `<taskId>` — you can recreate it manually later from
+> `scheduled-tasks-export.md`.
+
+
+### Prompt B-ST-wrap — scheduled-tasks wrap
+
+Fires after the last task. Surfaces the recreate/skip counts plus a
+reminder about dependency folders for any recreated task that has them.
+
+### ▶ Skill speaking ◀
+
+> Scheduled tasks: `<N_recreated>` recreated, `<N_skipped>` skipped.
+
+> <if any recreated task has dependencies>
+> These recreated task(s) reference attached folders — re-attach them
+> via *Cowork → each task's settings* before they next fire:
+>   • `<taskId>` (needs: `<folder>`, `<folder>`)
+>   • …
+> </if>
+
+> Moving on to artifact recovery.
+
+
+### Scheduled-tasks decisions
+
+- **Automation via the MCP tool, not manual handoff.** When the user
+  says `recreate`, the orchestrator calls
+  `mcp__scheduled-tasks__create_scheduled_task` directly with the cron,
+  prompt, and description captured at source. No "tell Claude in
+  another conversation" indirection — the task lands on the new
+  account in this same conversation. The user just confirms.
+- **Verbatim prompt, no editing.** The prompt body comes from
+  `scheduled-tasks-export.md` exactly as Track A captured it. Don't
+  paraphrase, condense, or "clean it up" (Discipline rule #10).
+- **Dependency-folder reattach is the user's manual step.** The
+  scheduled-tasks MCP doesn't expose folder attachment per-task;
+  that's a Cowork UI setting. The wrap surfaces a reminder per
+  dependency-having task; the user re-attaches via Cowork's task
+  settings UI.
+- **Single-project Track B skips.** Symmetric with Track A's
+  Step 3.7 skip in single-project mode. Scheduled tasks are
+  account-level resources; a focused one-project transfer doesn't
+  touch them.
+
+
+## Custom-skills installation (Track B Step 8.7)
+
+Fires after scheduled tasks, before binary recovery. The orchestrator
+pre-checks the destination account's `.claude/skills/` mount and
+reconciles it with the captured-skills list from the tracker —
+anything already installed (notably `account-migration` itself) is
+filtered out before the user-facing list is displayed. Single-project
+Track B skips this section entirely.
+
+### Edge case — all captured skills already installed
+
+If Step 8.7's pre-check finds every captured skill already present on
+the destination account (`installed: true` after reconciliation),
+B-CS-1 doesn't fire. One-liner; auto-advance per Discipline rule #9.
+
+### ▶ Skill speaking ◀
+
+> Custom skills already installed on this account — moving on.
+
+
+### Prompt B-CS-1 — custom-skills installation opener
+
+Fires when there's at least one captured skill the destination doesn't
+already have installed. Surface the pending `.skill` files via
+`mcp__cowork__present_files` *before* displaying this prompt so they
+render as clickable Save-skill cards in chat. Substitute the actual
+filename + size list; flag `vulscan-*` as a related set and
+`copy-to-scratch.skill` / `copy-from-scratch.skill` as a pair when
+those skills appear in the pending list.
+
+### ▶ Skill speaking ◀
+
+> `<N_pending>` custom skill(s) to install on this account. I've
+> surfaced each `.skill` file above as a clickable card — for each
+> one, click the card and use the **Save skill** / install button that
+> appears. They'll land in the same place all skills do (*Cowork →
+> Customize → Skills tab*).
+
+> The bundle:
+
+>   • `<skill-1>.skill` (`<size>`)
+>   • `<skill-2>.skill` (`<size>`)
+>   • …
+
+> <if vulscan-* group present>
+> Note: the four `vulscan-*` skills are a related set — they
+> likely chain together. Install them all if you use that workflow.
+> </if>
+
+> <if both copy-from-scratch.skill and copy-to-scratch.skill present>
+> Note: `copy-from-scratch.skill` and `copy-to-scratch.skill` are
+> a pair — install both or neither.
+> </if>
+
+> When all `<N_pending>` are installed (or any you don't want to keep
+> are skipped), say **done** and I'll re-check the
+> installed-skill list and update the tracker. Say **skip-all** to
+> leave the remaining ones uninstalled — you can install them later
+> from the same `skills/` folder in the hub. Say **quit** to stop the
+> migration here without closing things out.
+
+
+### Prompt B-CS-done — custom-skills install confirmation
+
+Fires after the user says `done`. The orchestrator re-reads the
+destination's `.claude/skills/` mount to confirm what's actually
+installed; the counts below reflect that fresh read, not the
+user's claim. If some surfaced skills are still missing, name them
+so the user knows.
+
+### ▶ Skill speaking ◀
+
+> `<N_now_installed>` custom skill(s) installed on this account.
+> <if N_still_pending > 0>
+> `<N_still_pending>` still pending — these aren't blocking, you can
+> install them anytime from the same `skills/` folder in the hub.
+> Pending:
+>   • `<skill-1>.skill`
+>   • `<skill-2>.skill`
+>   • …
+> </if>
+
+> Moving on to artifact recovery.
+
+
+### Prompt B-CS-skip-all — custom-skills skip-all confirmation
+
+Fires after the user says `skip-all`.
+
+### ▶ Skill speaking ◀
+
+> Skipping custom-skill installation. The `.skill` files stay in
+> `<hub>/skills/` — install them anytime via *Cowork → Customize →
+> the + button → Skills tab*. (Re-run the skill and pick **new** to
+> walk through them again later.)
+
+
+### Custom-skills installation decisions
+
+- **Pre-check before display.** The migration skill itself is always
+  installed on the destination during Track B (it's how the user got
+  here). The pre-check naturally filters it out. Same logic catches
+  any skills the user pre-installed on the new account before running
+  Track B.
+- **Detection is filesystem-based, not behavioral.** Listing
+  `.claude/skills/` is the source of truth — folder name = installed
+  slug. No reliance on chat-context's `<available_skills>` block,
+  which the skill can't introspect.
+- **Org-level skills.** If the user has installed a skill at the
+  organization level rather than per-account, the slug may not
+  appear in `.claude/skills/` for that account. The tracker captures
+  intent; nothing enforces re-install. `skip-all` is the clean way to
+  acknowledge org-level coverage.
+- **Single-project Track B skips.** Symmetric with Track A's
+  Step 3.5 skip in single-project mode. No captured skills means
+  nothing to install.
+- **Re-check on `done`.** Don't trust the user's claim — re-read
+  `.claude/skills/` after they say `done`. The Save-skill button
+  is per-file; they may have installed some and not others.
+
 
 ## Binary recovery (Track B Phase 5)
 
@@ -1382,57 +2344,59 @@ ticks checkboxes after the user confirms each conversation done.
 
 ### Prompt B-BR-1 — binary recovery opener
 
-```
-Next: recover the binary files that couldn't be extracted from the
-export.
+### ▶ Skill speaking ◀
 
-When Track A processed your conversations, it found **<N_recover>**
-files (.docx, .xlsx, .pdf, .pptx, etc.) that were referenced in
-transcripts but not included in the data export. They're listed in
-`<catchall_name>/_ARTIFACTS_TO_RECOVER.md`.
+> Next: recover the binary files that couldn't be extracted from the
+> export.
 
-These files only exist inside conversations on claude.ai in your old
-account. Once that account is deleted, they're gone permanently. If
-you've already started the old-account deletion process, recover what
-you can now.
+> When Track A processed your conversations, it found <N_recover>
+> files (.docx, .xlsx, .pdf, .pptx, etc.) that were referenced in
+> transcripts but not included in the data export. They're listed in
+> `<catchall_name>/_ARTIFACTS_TO_RECOVER.md`.
 
-We'll walk through them conversation by conversation — opening each
-conversation in the old account, downloading the files, and saving
-them to disk next to the transcript. I'll tick off each conversation's
-checkboxes after you confirm you've recovered its files.
+> These files only exist inside conversations on claude.ai in your old
+> account. Once that account is deleted, they're gone permanently. If
+> you've already started the old-account deletion process, recover what
+> you can now.
 
-The files span **<N_convs_with_binaries>** conversations. Some have
-one file, some have several.
+> We'll walk through them conversation by conversation — opening each
+> conversation in the old account, downloading the files, and saving
+> them to disk next to the transcript. I'll tick off each conversation's
+> checkboxes after you confirm you've recovered its files.
 
-Say **"ready"** to start the first conversation, **"skip"** if
-you've already recovered everything or don't want to recover any of
-it, or **"quit"** to stop. (If you skip or quit, the unchecked items
-remain in `_ARTIFACTS_TO_RECOVER.md` so you can come back later.)
-```
+> The files span <N_convs_with_binaries> conversations. Some have
+> one file, some have several.
+
+> Say **ready** to start the first conversation, **skip** if
+> you've already recovered everything or don't want to recover any of
+> it, or **quit** to stop. (If you skip or quit, the unchecked items
+> remain in `_ARTIFACTS_TO_RECOVER.md` so you can come back later.)
+
 
 ### Pattern — per-conversation recovery prompts
 
-```
---- Conversation N of <M> ---
+### ▶ Skill speaking ◀
 
-**<conversation_title>**
-<destination_label>
-Transcript: `<transcript_relative_path>`
+> --- Conversation N of <M> ---
 
-Files to recover (<N_files>):
-  • <filename_1>
-  • <filename_2>
-  • …
+> <conversation_title>
+> <destination_label>
+> Transcript: `<transcript_relative_path>`
 
-On claude.ai (old account):
-1. Open the conversation: <claude.ai_url>
-2. Download each file from the conversation's file panel.
-3. Save them to:
-   `<artifacts_folder_relative_path>`
+> Files to recover (<N_files>):
+>   • <filename_1>
+>   • <filename_2>
+>   • …
 
-Say **"done"** when finished, **"skip"** to defer this conversation,
-or **"quit"** to stop.
-```
+> On claude.ai (old account):
+> 1. Open the conversation: <claude.ai_url>
+> 2. Download each file from the conversation's file panel.
+> 3. Save them to:
+>    `<artifacts_folder_relative_path>`
+
+> Say **done** when finished, **skip** to defer this conversation,
+> or **quit** to stop.
+
 
 `<destination_label>` is one of three strings derived from the conversation's bucket:
 - Part 1 reconstructed → `Project: <project_name> (reconstructed)`
@@ -1441,20 +2405,22 @@ or **"quit"** to stop.
 
 ### Prompt B-BR-wrap — binary recovery wrap
 
-```
-Binary recovery <complete | partial>. **<N_recovered>** files
-recovered across **<N_done_convs>** conversations.
-```
+### ▶ Skill speaking ◀
+
+> Binary recovery <complete | partial>. <N_recovered> files
+> recovered across <N_done_convs> conversations.
+
 
 If skipped any, append:
 
-```
+### ▶ Skill speaking ◀
 
-**<N_remaining>** files in **<N_skipped_convs>** conversations are
-still pending. They're in `_ARTIFACTS_TO_RECOVER.md` with unchecked
-boxes. Recover them before deleting the old account, or re-run the
-skill and pick "new" to resume.
-```
+
+> <N_remaining> files in <N_skipped_convs> conversations are
+> still pending. They're in `_ARTIFACTS_TO_RECOVER.md` with unchecked
+> boxes. Recover them before deleting the old account, or re-run the
+> skill and pick **new** to resume.
+
 
 ### Edge case — no binaries to recover
 
@@ -1462,9 +2428,10 @@ If `_ARTIFACTS_TO_RECOVER.md` has zero unchecked items (or doesn't
 exist), B-BR-1 doesn't fire. Skill silently moves to validation with a
 one-liner:
 
-```
-No binaries to recover — moving on.
-```
+### ▶ Skill speaking ◀
+
+> No binaries to recover — moving on.
+
 
 ### Binary recovery decisions
 
@@ -1481,53 +2448,67 @@ No binaries to recover — moving on.
 
 ---
 
-## Validation (Track B Phase 6)
+## Memory validation (Track B Step 6.5 — immediate, right after seed)
+
+Fires immediately after Step 6 returns `done`. The user is still in
+Claude Chat (the seed happened there — Cowork can't write account-level
+memory). Validation is the same surface, just one more paste in the same
+conversation. Doing it now avoids a context switch back to Chat at the
+end of Track B.
+
+If Step 6 returned `skip` (no seed), this step is skipped too —
+nothing to validate.
 
 ### Prompt B-V-1 — validation opener
 
-```
-Almost done — let's validate that your global memory came across
-correctly.
+### ▶ Skill speaking ◀
 
-Validation reads account-level memory, which is exposed through
-**Claude Chat** (claude.ai in a browser, or the Chat surface in
-Claude Desktop), not in Cowork. So like the seeding step, this part
-happens in Claude Chat, then you come back here.
+> Quick check while you're still in Claude Chat from the seed step —
+> let's make sure the new account picked up what you migrated.
 
-To run validation:
+> In the *same no-project Claude Chat conversation you just used for
+> seeding* (don't start a new one — the seed memory is fresher in this
+> conversation), paste this prompt:
 
-1. Open **Claude Chat** (claude.ai in a browser, or the Chat surface
-   in Claude Desktop — NOT Cowork). Sign in to your NEW account.
-2. Start a new conversation — **no project selected**.
-3. Paste this prompt:
-   *"Based on everything you know about me, tell me: who I am and
-   what I do, what projects or topics are top of mind, how I prefer
-   to communicate, any tools or domains I work in, and anything else
-   you consider important context. Be thorough — I'm checking that a
-   migration was successful."*
-4. Compare Claude's response against `memory-capture.md` in this hub
-   folder.
-5. If anything important is missing or wrong, you have two options:
-   - Add a memory edit on the Claude Chat conversation directly.
-   - Attach `memory-capture.md` again and ask Claude to fill in the
-     gaps.
+> ```
+> Based on everything you know about me, tell me:
+> - Who I am and what I do
+> - What projects or topics are top of mind for me
+> - How I prefer to communicate
+> - Any tools, frameworks, or domains I work in
+> - Anything else you consider important context
 
-Come back here (Cowork) and say **"done"** when validation looks
-good. **"skip"** if you didn't seed memory (or want to skip
-validation), or **"quit"** to stop.
-```
+> Be thorough — I'm checking that a migration was successful.
+> ```
+
+> Compare Claude's response against `memory-capture.md` in this hub
+> folder. If anything important is missing or wrong, you have two
+> options to fix it before continuing:
+
+>   • Add a memory edit on the Claude Chat conversation directly
+>     ("remember that …").
+>   • Attach `memory-capture.md` again in the same conversation and
+>     ask Claude to fill in the gaps.
+
+> Come back here (Cowork) and say **done** when the response looks
+> right, **skip** if you'd rather defer validation (you can run the
+> prompt above any time in a no-project Chat conversation), or **quit**.
+
 
 ### Prompt B-V-2 — validation done
 
-```
-Validated. Last step: clean up the migration hub.
-```
+### ▶ Skill speaking ◀
+
+> Memory validated. Catch-all setup is next.
+
 
 ### Prompt B-V-3 — validation skip
 
-```
-Validation skipped — moving on to cleanup.
-```
+### ▶ Skill speaking ◀
+
+> Validation deferred — moving on. If you want to check later, paste the
+> validation prompt in any no-project Chat conversation on this account.
+
 
 ---
 
@@ -1535,55 +2516,216 @@ Validation skipped — moving on to cleanup.
 
 ### Prompt B-C-1 — cleanup opener
 
-```
-Last step: clean up the migration hub.
+### ▶ Skill speaking ◀
 
-You've done the work — projects relinked, memory seeded, binaries
-recovered, validation passed. The migration hub itself is no longer
-load-bearing.
+> Last step: clean up the migration hub.
 
-Before you clean up, decide whether to keep a long-term record of how
-the migration ran. If yes, copy these out to a separate archive
-location now (they'll be deleted with the hub folder):
+> You've done the work — projects relinked, memory seeded, binaries
+> recovered. The migration hub itself is no longer load-bearing.
 
-  • `tracker.html` — final state of the migration
-  • `README - Final Transition to New Account.md` — the checklist
-  • Any per-project blueprints you might want to reference later
+> Before you clean up, decide whether to keep a long-term record of how
+> the migration ran. If yes, copy these out to a separate archive
+> location now (they'll be deleted with the hub folder):
 
-Then clean up in this order:
+>   • `tracker.html` — final state of the migration
+>   • `README - Final Transition to New Account.md` — the checklist
+>   • Any per-project blueprints you might want to reference later
 
-1. **In Cowork on the old account:** open the migration hub project
-   and use **Settings → Archive project**. (Cowork has no delete,
-   only archive.)
-2. **In Explorer:** delete the migration hub folder from disk.
-3. **In Cowork on this account:** open the migration hub project
-   (the one you imported to run Track B) and use **Settings → Archive
-   project**.
+> Then clean up in this order:
 
-Both the archive AND the folder delete are required. Archive alone
-leaves an orphan folder on disk; folder delete alone leaves an orphan
-project registration.
+> 1. In Cowork on the old account: open the migration hub project
+>    and use *Settings → Archive project*. (Cowork has no delete,
+>    only archive.)
+> 2. In Explorer: delete the migration hub folder from disk.
+> 3. In Cowork on this account: open the migration hub project
+>    (the one you imported to run Track B) and use *Settings → Archive
+>    project*.
 
-Say **"done"** when finished, or **"skip"** if you want to keep the
-hub around for now (for example, to come back to a deferred project
-or recover binaries you missed). The tracker stays usable if you
-re-run the skill and pick "new" later.
-```
+> Both the archive AND the folder delete are required. Archive alone
+> leaves an orphan folder on disk; folder delete alone leaves an orphan
+> project registration.
+
+> Say **done** to confirm you've completed the cleanup steps above and
+> let me close out the migration. Say **later** if you want to leave
+> the hub in place for now — I'll mark the migration as deferred, and
+> when you re-invoke this skill against the hub later, I'll walk you
+> through any items you skipped (deferred projects, scheduled tasks,
+> binaries still pending) and re-offer cleanup. Say **quit** to stop
+> without closing things out.
+
 
 ### Prompt B-C-2 — cleanup done
 
-```
-Hub cleaned up. Track B complete!
-```
+### ▶ Skill speaking ◀
 
-### Prompt B-C-3 — cleanup skip
+> Hub cleaned up. Track B complete.
 
-```
-Cleanup skipped — the migration hub stays on disk and in Cowork. You
-can clean it up later via the same steps when you're ready.
 
-Track B complete!
-```
+### Prompt B-C-3 — cleanup later
+
+### ▶ Skill speaking ◀
+
+> Cleanup deferred — the migration hub stays on disk and in Cowork.
+> When you're ready, re-invoke this skill against the hub and pick
+> **new** at the side-selection prompt; I'll recognize the deferred
+> state, list anything you skipped along the way, offer to re-walk
+> each section, and re-prompt for cleanup.
+
+> Track B complete (cleanup pending).
+
+
+---
+
+## Track B resume — re-invocation on a deferred-cleanup migration
+
+Fires when Step 5's phase routing finds `phase == "track-b-complete"`
+AND `cleanup_done` is false or absent (the user previously chose
+`later` at the cleanup wrap, or is running v1.6.1+ against a
+pre-v1.6.1 tracker). Multi-project Track B only.
+
+### Prompt B-Resume-closed — migration already fully closed
+
+Fires when `phase == "track-b-complete"` AND `cleanup_done == true`.
+One-liner; exits cleanly.
+
+### ▶ Skill speaking ◀
+
+> This migration is already complete and the hub was cleaned up on a
+> prior run. Nothing left to do — pick a different project to work
+> in. The tracker stays on disk as a record.
+
+
+### Prompt B-Resume-1 — resume opener
+
+Fires when re-entry is detected and there's work to revisit.
+
+### ▶ Skill speaking ◀
+
+> Welcome back. This migration is in deferred-cleanup state — Track B
+> wrapped up but you chose **later** on the cleanup step. Here's
+> what's still outstanding:
+
+>   <conditional bullets — drop any whose count is 0>
+>   • `<N_skipped_projects>` project(s) deferred during the
+>     walk-through
+>   • `<N_skipped_tasks>` scheduled task(s) not recreated
+>   • `<N_pending_skills>` custom skill(s) still pending install
+>   • `<N_unchecked_binaries>` binary file(s) still pending recovery
+>     in `_ARTIFACTS_TO_RECOVER.md`
+
+> Say **review** and I'll walk you through each section, offering one
+> more pass per deferred item — you can decide per-item to do it now
+> or keep it deferred. Say **cleanup-now** to skip the review and go
+> straight to the cleanup wrap. Say **leave** to exit without
+> changing anything; the migration stays in deferred-cleanup state and
+> we can come back to it again later.
+
+
+### Prompt B-Resume-2-projects — re-walk deferred projects?
+
+Fires in resume sub-step 4a when there's at least one skipped project.
+
+### ▶ Skill speaking ◀
+
+> Deferred projects (`<N>`):
+
+>   • `<project_name>` — `<session_count>` session(s), blueprint
+>     `<present|absent>`
+>   • …
+
+> Say **re-walk** and I'll re-fire the per-project walk-through for
+> these — you decide again per project (`done` / `skip` / `quit`).
+> Say **skip-projects-section** to leave them deferred and move on to
+> the next section. Say **quit** to stop the resume.
+
+
+### Prompt B-Resume-2-tasks — re-walk deferred scheduled tasks?
+
+Fires in resume sub-step 4b when there's at least one non-recreated
+scheduled task.
+
+### ▶ Skill speaking ◀
+
+> Scheduled tasks not yet recreated on this account (`<N>`):
+
+>   • `<taskId>` — `<cron_human>`
+>   • …
+
+> Say **re-walk** and I'll re-fire the per-task recreate flow.
+> Each task: `recreate` (I'll create it on this account using the
+> captured cron + prompt) / `skip` / `quit`. Say
+> **skip-tasks-section** to leave them deferred and move on. Say
+> **quit** to stop the resume.
+
+
+### Prompt B-Resume-2-skills — re-walk pending custom skills?
+
+Fires in resume sub-step 4c when at least one `custom_skills[]` entry
+is still `installed: false` after re-reconciling against the
+destination's live `.claude/skills/` listing.
+
+### ▶ Skill speaking ◀
+
+> Custom skill(s) not yet installed on this account (`<N>`):
+
+>   • `<filename-1>.skill` (`<size>`)
+>   • `<filename-2>.skill` (`<size>`)
+>   • …
+
+> Say **re-walk** and I'll re-surface them as clickable Save-skill
+> cards (same flow as the first pass: `done` after you install
+> what you want / `skip-all` to leave the rest / `quit`). Say
+> **skip-skills-section** to leave them pending and move on. Say
+> **quit** to stop the resume.
+
+
+### Prompt B-Resume-2-binaries — re-walk unchecked binaries?
+
+Fires in resume sub-step 4c when `_ARTIFACTS_TO_RECOVER.md` still has
+unchecked items.
+
+### ▶ Skill speaking ◀
+
+> Binaries still pending recovery (`<N>` files across `<M>`
+> conversation(s)). The list is in `_ARTIFACTS_TO_RECOVER.md` in the
+> catch-all. Recover before the old account is deleted, or the files
+> are lost permanently.
+
+> Say **re-walk** and I'll re-fire the per-conversation binary
+> recovery flow. Say **skip-binaries-section** to leave them deferred
+> and move on. Say **quit** to stop the resume.
+
+
+### Track B resume decisions
+
+- **Resume detection at Step 5 phase routing**, before the inventory
+  display. The tracker's `phase` + `cleanup_done` fields are
+  authoritative. `cleanup_done` absent (pre-v1.6.1 tracker) is treated
+  as false, preserving resume capability on older trackers.
+
+- **Resume reviews deferrals, not redoes everything.** The re-walk
+  only re-fires steps that have outstanding deferred items. Memory
+  seed isn't offered because there's no per-item state to revisit —
+  if the user wants to re-seed, they invoke memory-seed-prompt.md
+  manually in Claude Chat.
+
+- **Resume mutates tracker state mid-walk only for skipped projects.**
+  The `skipped` → `pending` flip lets Step 8 iterate the projects via
+  its normal pending-only filter. Scheduled tasks and binaries don't
+  need a flip — their step-level filters already iterate non-completed
+  items.
+
+- **Each section is independently skippable.** A user can review
+  projects without revisiting scheduled tasks, or jump straight to
+  cleanup. The sub-step prompts wrap that as `skip-<section>-section`
+  rather than `skip` (the latter would be ambiguous with per-item
+  skips inside each re-walk).
+
+- **Re-fired Phase 7 cleanup wrap closes the loop.** `done` →
+  `cleanup_done: true` and the migration is fully closed (B-Resume-closed
+  fires on any future re-invocation). `later` → still
+  `cleanup_done: false`, so the user can resume again.
+
 
 ---
 
@@ -1591,23 +2733,25 @@ Track B complete!
 
 ### Prompt B-X-1 — closing
 
-Fires after either B-C-2 or B-C-3 (or after B-V-2 if user quit at
+Fires after either B-C-2 or B-C-3 (or after B-C-1 if user quit at
 cleanup). Adapts based on what was skipped.
 
-```
-Your projects are relinked on this account. Open any of them to pick
-up where you left off.
+### ▶ Skill speaking ◀
 
-<conditional reminders>
+> Your projects are relinked on this account. Open any of them to pick
+> up where you left off.
 
-Welcome to the new side.
-```
+> <conditional reminders>
+
+> Welcome to the new side.
+
 
 Conditional reminders, each appended on its own line if the corresponding phase was skipped:
 
 - Memory seed skipped: *"Memory seeding was skipped — Claude on this account will pick up your context conversation by conversation as you work, or you can run the seed prompt manually later from `memory-seed-prompt.md` in the hub."*
 - Binary recovery skipped (with remaining items): *"Binary recovery has **<N_remaining>** files pending. `_ARTIFACTS_TO_RECOVER.md` lists them; recover before deleting the old account."*
 - Some projects deferred in walk-through: *"**<N_skipped>** projects were deferred during the walk-through. The tracker shows them as pending; re-run the skill and pick \"new\" to come back to them."*
+- Custom skills still pending: *"**<N_pending_skills>** custom skill(s) are still pending install. The `.skill` files are in `<hub>/skills/`; install anytime via *Cowork → Customize → + → Skills tab*."*
 - Cleanup skipped: *"The migration hub stays on disk until you clean it up manually."*
 
 ### Track B closing decisions

@@ -1,5 +1,11 @@
 #!/usr/bin/env python3
-"""extract_export.py - Claude export splitter (fresh copy, session 3)."""
+"""extract_export.py - Claude export splitter.
+
+Reads a Claude personal-account data export, splits its conversations.json
+into one transcript per conversation, and builds manifest CSVs that
+downstream scripts (parse_allchats.py, reconstruct.py, reshape_and_extract.py)
+consume.
+"""
 
 import argparse, csv, json, os, re, sys
 

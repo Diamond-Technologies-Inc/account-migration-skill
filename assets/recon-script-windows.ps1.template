@@ -1,0 +1,96 @@
+# account-migration session recon — Windows PowerShell
+#
+# WHAT THIS DOES
+#   Walks every per-session JSON file under the Cowork install root and writes a
+#   CSV of seven non-sensitive fields per session: sessionId, spaceId, title,
+#   createdAt, lastActivityAt, isArchived, userSelectedFolders. The skill reads
+#   this CSV to attribute sessions to projects (via spaceId) and to recover the
+#   working-folder reattach list per project (via userSelectedFolders).
+#
+# WHY YOU'RE RUNNING IT
+#   The Cowork bash sandbox can see the session JSONs exist but can't read them
+#   (the install root isn't in any sandbox mount). Native PowerShell on your
+#   account can. This script runs in your native shell, reads what the sandbox
+#   can't, and hands the result back through a CSV.
+#
+# WHAT IT DOES NOT READ
+#   Deliberately skips initialMessage, mcqAnswers, systemPrompt, and
+#   enabledMcpTools — those fields can carry content from unrelated projects.
+#   This script only pulls non-sensitive metadata.
+#
+# OUTPUT LOCATION
+#   By default the CSV lands next to this script — whatever folder you saved
+#   it into. That keeps script + output paired and avoids guessing where on
+#   your machine is writable. If the write fails (some folders refuse writes
+#   from native shells), copy this .ps1 to any other folder on your machine
+#   and re-run from there. When it finishes, move the CSV back into the
+#   skill's hub folder; the skill will pick it up.
+#
+# REQUIREMENTS
+#   Windows PowerShell 5.1 (built into Windows 10/11) or PowerShell 7+. No
+#   third-party modules. Run from a normal user shell — no admin needed.
+
+$ErrorActionPreference = "Stop"
+
+# Skill-substituted values (the lines below this comment block):
+#   $base  is the install root (.../local-agent-mode-sessions/<account>/<install>)
+#   $out   is where to write the CSV (default: $env:USERPROFILE\Downloads\sessions-recon.csv)
+$base = "{{BASE_PATH}}"
+$out  = "{{OUTPUT_CSV}}"
+
+if (-not (Test-Path -Path $base -PathType Container)) {
+    Write-Host ""
+    Write-Host "ERROR: install root not found:" -ForegroundColor Red
+    Write-Host "  $base"
+    Write-Host ""
+    Write-Host "This usually means the skill embedded the wrong path. Re-run"
+    Write-Host "the skill's recon-script render step and try again."
+    exit 1
+}
+
+$outDir = Split-Path -Parent $out
+if ($outDir -and -not (Test-Path -Path $outDir -PathType Container)) {
+    New-Item -ItemType Directory -Path $outDir -Force | Out-Null
+}
+
+Write-Host "Scanning session JSONs under:" -ForegroundColor Cyan
+Write-Host "  $base"
+Write-Host ""
+
+$rows = @()
+$skipped = 0
+Get-ChildItem -Path $base -Filter "local_*.json" -File | ForEach-Object {
+    try {
+        $j = Get-Content -Raw -Path $_.FullName | ConvertFrom-Json
+        $rows += [PSCustomObject]@{
+            sessionId           = $j.sessionId
+            spaceId             = $j.spaceId
+            title               = $j.title
+            createdAt           = $j.createdAt
+            lastActivityAt      = $j.lastActivityAt
+            isArchived          = $j.isArchived
+            userSelectedFolders = (($j.userSelectedFolders) -join " | ")
+        }
+    } catch {
+        $skipped++
+        Write-Warning "Skipped $($_.Name): $($_.Exception.Message)"
+    }
+}
+
+if ($rows.Count -eq 0) {
+    Write-Host "ERROR: no session JSONs parsed from $base." -ForegroundColor Red
+    exit 1
+}
+
+$rows = $rows | Sort-Object createdAt
+$rows | Export-Csv -Path $out -NoTypeInformation -Encoding UTF8
+
+Write-Host ""
+Write-Host ("Wrote {0} session rows to:" -f $rows.Count) -ForegroundColor Green
+Write-Host "  $out"
+if ($skipped -gt 0) {
+    Write-Host ("({0} unreadable JSON file(s) skipped.)" -f $skipped) -ForegroundColor Yellow
+}
+Write-Host ""
+Write-Host "Next step: drag this CSV into the skill's hub folder so the skill"
+Write-Host "can pick it up and continue."

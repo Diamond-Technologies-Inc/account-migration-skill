@@ -22,6 +22,7 @@ source files.
 Exits non-zero on error and prints a diagnostic message.
 """
 
+import argparse
 import os
 import sys
 import zipfile
@@ -86,16 +87,21 @@ def package(skill_source: Path, output_path: Path) -> int:
         print(f"ERROR: no files written to {output_path}", file=sys.stderr)
         return 1
 
-    print(f"Packaged {count} file(s) from {skill_source} → {output_path}")
+    print(f"Packaged {count} file(s) from {skill_source} -> {output_path}")
     return 0
 
 
 def main(argv):
-    if len(argv) != 3:
-        print(__doc__, file=sys.stderr)
-        return 2
-    skill_source = Path(argv[1]).resolve()
-    output_path = Path(argv[2]).resolve()
+    ap = argparse.ArgumentParser(
+        description="Re-package the account-migration skill into a .skill file.")
+    ap.add_argument("skill_source",
+                    help="Path to the skill source folder (containing SKILL.md).")
+    ap.add_argument("output_path",
+                    help="Output path for the packaged .skill file.")
+    args = ap.parse_args(argv[1:])
+
+    skill_source = Path(args.skill_source).resolve()
+    output_path = Path(args.output_path).resolve()
     return package(skill_source, output_path)
 
 
